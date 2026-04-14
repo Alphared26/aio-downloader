@@ -1,0 +1,50 @@
+name: aio_downloader
+description: "AIO Downloader — Download video from any platform"
+publish_to: 'none'
+
+version: 2.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  http: ^1.6.0
+  receive_sharing_intent: ^1.8.1
+  permission_handler: ^12.0.1
+  path_provider: ^2.1.5
+  url_launcher: ^6.3.2
+  youtube_explode_dart: ^3.0.5
+  device_info_plus: ^12.4.0
+  media_scanner: ^2.2.1
+  html: ^0.15.6
+
+  # NEW: UI & Settings
+  google_fonts: ^6.2.1
+  shared_preferences: ^2.3.3
+
+  # NEW: Notifications
+  flutter_local_notifications: ^18.0.0
+
+  # NEW: Background/Foreground Service
+  flutter_foreground_task: ^8.15.0
+
+  # State Management
+  provider: ^6.1.2
+
+  # Open local files (video/image) on Android
+  open_file: ^3.3.2
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icons/
