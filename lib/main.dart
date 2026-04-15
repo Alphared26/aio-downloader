@@ -10,6 +10,7 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import 'services/download_service.dart';
 import 'services/notification_service.dart';
+import 'services/settings_service.dart';
 import 'pages/home_page.dart';
 import 'pages/history_page.dart';
 import 'pages/settings_page.dart';
@@ -20,6 +21,7 @@ void main() async {
   // Initialize services
   DownloadService.initForegroundTask();
   await NotificationService().initialize();
+  await SettingsService().init();
 
   // Lock portrait orientation
   await SystemChrome.setPreferredOrientations([
@@ -35,8 +37,11 @@ void main() async {
   ));
 
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => DownloadService(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => DownloadService()),
+        ChangeNotifierProvider(create: (_) => SettingsService()),
+      ],
       child: const AIODownloaderApp(),
     ),
   );
@@ -91,11 +96,14 @@ class _MainShellState extends State<MainShell> {
 
     final svc = context.read<DownloadService>();
 
+    final settings = context.read<SettingsService>();
+
     // Handle intent when app is cold-started
     ReceiveSharingIntent.instance.getInitialMedia().then((value) {
       if (value.isNotEmpty) {
         setState(() => _selectedTab = 0);
-        svc.processUrl(value.first.path, DownloadQuality.auto);
+        final doAuto = settings.autoDownloadShare;
+        svc.scrapeUrl(value.first.path, settings.quality, silentAutoDownload: doAuto);
       }
     });
 
@@ -103,7 +111,8 @@ class _MainShellState extends State<MainShell> {
     _intentSub = ReceiveSharingIntent.instance.getMediaStream().listen((value) {
       if (value.isNotEmpty) {
         setState(() => _selectedTab = 0);
-        svc.processUrl(value.first.path, DownloadQuality.auto);
+        final doAuto = settings.autoDownloadShare;
+        svc.scrapeUrl(value.first.path, settings.quality, silentAutoDownload: doAuto);
       }
     });
   }

@@ -17,6 +17,7 @@ migrate_working_dir/
 *.ipr
 *.iws
 .idea/
+.botwa
 
 # VS Code
 # .vscode/
@@ -50,10 +51,7 @@ app.*.map.json
 *.keystore
 key.properties
 
-# botwa — folder bot WhatsApp tidak perlu di-upload ke repo ini
-botwa/node_modules/
-botwa/session/
-botwa/.env
+
 
 # temp
 temp_repo/
