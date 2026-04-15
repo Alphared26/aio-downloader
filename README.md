@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="icon.jpg" width="96" alt="AIO Downloader Icon"/>
+<img src="/icon.jpg" width="96" alt="AIO Downloader Icon"/>
 
 # AIO Downloader
 ### Download video & foto dari mana saja
