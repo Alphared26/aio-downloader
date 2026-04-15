@@ -2,7 +2,7 @@ name: aio_downloader
 description: "AIO Downloader — Download video from any platform"
 publish_to: 'none'
 
-version: 2.0.0+1
+version: 2.0.0
 
 environment:
   sdk: ^3.9.2
@@ -37,6 +37,7 @@ dependencies:
 
   # Open local files (video/image) on Android
   open_file: ^3.3.2
+  cached_network_image: ^3.4.1
 
 
 dev_dependencies:

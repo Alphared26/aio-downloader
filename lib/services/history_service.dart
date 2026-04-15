@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -46,7 +47,7 @@ class DownloadRecord {
     final dt = DateTime.fromMillisecondsSinceEpoch(timestamp);
     final now = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return 'Barusan';
+    if (diff.inMinutes < 1) return 'Baru saja';
     if (diff.inHours < 1) return '${diff.inMinutes}m lalu';
     if (diff.inDays < 1) return '${diff.inHours}j lalu';
     if (diff.inDays < 7) return '${diff.inDays}h lalu';
@@ -86,6 +87,13 @@ class HistoryService {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_key) ?? [];
     if (index >= 0 && index < raw.length) {
+      // First get the record to find the file path
+      try {
+        final record = DownloadRecord.fromMap(jsonDecode(raw[index]));
+        final file = File(record.filePath);
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+      
       raw.removeAt(index);
       await prefs.setStringList(_key, raw);
     }
@@ -94,5 +102,32 @@ class HistoryService {
   Future<void> clearAll() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
+  }
+
+  Future<void> deleteRecordByObject(DownloadRecord record) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(_key) ?? [];
+    
+    int foundIndex = -1;
+    for (int i = 0; i < raw.length; i++) {
+      try {
+        final r = DownloadRecord.fromMap(jsonDecode(raw[i]));
+        if (r.filePath == record.filePath && r.timestamp == record.timestamp) {
+          foundIndex = i;
+          break;
+        }
+      } catch (_) {}
+    }
+
+    if (foundIndex != -1) {
+      // Delete file
+      try {
+        final file = File(record.filePath);
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+      
+      raw.removeAt(foundIndex);
+      await prefs.setStringList(_key, raw);
+    }
   }
 }

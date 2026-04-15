@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:open_file/open_file.dart';
@@ -50,8 +51,51 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Future<void> _deleteRecord(int index) async {
-    await _historyService.deleteRecord(index);
-    await _loadHistory();
+    final record = _records[index];
+    final originalIndex = index;
+    bool undoPressed = false;
+
+    // Temporarily remove from UI
+    setState(() {
+      _records.removeAt(index);
+    });
+
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Text('Menghapus file dalam 5 detik...', 
+              style: GoogleFonts.inter(fontSize: 12, color: Colors.white)),
+          ],
+        ),
+        action: SnackBarAction(
+          label: 'URUNGKAN',
+          textColor: Colors.blueAccent,
+          onPressed: () {
+            undoPressed = true;
+            setState(() {
+              _records.insert(originalIndex, record);
+            });
+          },
+        ),
+        backgroundColor: const Color(0xFF1A1A2E),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(12),
+        duration: const Duration(seconds: 5),
+      ),
+    ).closed.then((reason) async {
+      if (!undoPressed) {
+        // Find current index (it might have changed if multiple deletes happen, 
+        // but since we are deleting the specific record object from DB, we just need to pass the ID or re-calculate)
+        // Actually HistoryService.deleteRecord(index) uses index. This is risky with undo.
+        // Let's add a by-record delete to HistoryService.
+        await _historyService.deleteRecordByObject(record);
+      }
+    });
   }
 
   Future<void> _clearAll() async {
@@ -207,7 +251,8 @@ class _HistoryPageState extends State<HistoryPage> {
                 color: _platformColor(r.platform).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(_platformIcon(r.platform),
+              child: Icon(
+                r.type == 'video' ? Icons.videocam_rounded : Icons.image_rounded,
                 color: _platformColor(r.platform), size: 20),
             ),
             const SizedBox(width: 12),
