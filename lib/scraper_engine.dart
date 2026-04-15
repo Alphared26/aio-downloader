@@ -5,8 +5,8 @@ import 'package:html/parser.dart' as html_parser;
 
 class ScrapedMedia {
   final String url;
-  final String type; // 'video' or 'image'
-  final String extension; // '.mp4', '.jpg', etc.
+  final String type; // 'video', 'image', or 'audio'
+  final String extension; // '.mp4', '.jpg', '.mp3', etc.
   final String platform;
   final String author;
   final String id;
@@ -88,7 +88,7 @@ class AntiGravityEngine {
 
       if (expandedUrl.contains('youtube.com/') || expandedUrl.contains('youtu.be/')) {
         final res = await _getYoutube(expandedUrl, quality: quality);
-        if (res != null) return [res];
+        if (res != null) return res;
       }
 
       return await _getUniversalOn4t(expandedUrl);
@@ -429,40 +429,75 @@ class AntiGravityEngine {
     } catch (_) { return null; }
   }
 
-  static Future<ScrapedMedia?> _getYoutube(String url, {String quality = 'auto'}) async {
+  static Future<List<ScrapedMedia>?> _getYoutube(String url, {String quality = 'auto'}) async {
     try {
+      print("[AIO ENGINE] Fetching YouTube from Vreden (Video & Audio)...");
       final encodedUrl = Uri.encodeComponent(url);
-      String resNexray = (quality == 'q1080') ? '1080' : '720';
       
+      // Map quality to Vreden format
+      String vQual = 'hd720';
+      if (quality == 'q1080') vQual = 'hd1080';
+      if (quality == 'q360') vQual = 'medium';
+
+      final results = <ScrapedMedia>[];
+
+      // 1. Fetch VIDEO
       try {
-        final response = await http.get(Uri.parse('$_nexrayBase/api/downloader/aio?url=$encodedUrl&quality=$resNexray')).timeout(const Duration(seconds: 20));
+        final vUrl = '$_vredenBase/api/v1/download/youtube/video?url=$encodedUrl&quality=$vQual';
+        final response = await http.get(Uri.parse(vUrl)).timeout(const Duration(seconds: 25));
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
-          if (data['status'] == true && data['result'] != null && data['result']['url'] != null) {
-            return ScrapedMedia(
-              url: data['result']['url'], type: 'video', extension: '.mp4', platform: 'youtube',
-              author: data['result']['metadata']?['author'] ?? 'user', id: _extractId(url),
-              thumbnailUrl: data['result']['metadata']?['thumbnail'],
-            );
+          if (data['status'] == true && data['result'] != null) {
+            final res = data['result'];
+            if (res['download'] != null && res['download']['url'] != null) {
+              final meta = res['metadata'];
+              results.add(ScrapedMedia(
+                url: res['download']['url'],
+                type: 'video',
+                extension: '.mp4',
+                platform: 'youtube',
+                author: meta?['author']?['name'] ?? 'YouTube User',
+                id: meta?['videoId'] ?? _extractId(url),
+                thumbnailUrl: meta?['thumbnail'],
+              ));
+            }
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        print("[AIO ENGINE] YT Video Error: $e");
+      }
 
+      // 2. Fetch AUDIO
       try {
-        final yt = YoutubeExplode();
-        final video = await yt.videos.get(url);
-        final manifest = await yt.videos.streamsClient.getManifest(video.id);
-        final streamInfo = manifest.muxed.withHighestBitrate();
-        final thumb = video.thumbnails.mediumResUrl;
-        yt.close();
-        return ScrapedMedia(
-          url: streamInfo.url.toString(), type: 'video', extension: '.mp4', platform: 'youtube',
-          author: video.author, id: video.id.value,
-          thumbnailUrl: thumb,
-        );
-      } catch (_) {}
+        final aUrl = '$_vredenBase/api/v1/download/youtube/audio?url=$encodedUrl&quality=128';
+        final response = await http.get(Uri.parse(aUrl)).timeout(const Duration(seconds: 25));
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          if (data['status'] == true && data['result'] != null) {
+            final res = data['result'];
+            if (res['download'] != null && res['download']['url'] != null) {
+              final meta = res['metadata'];
+              results.add(ScrapedMedia(
+                url: res['download']['url'],
+                type: 'audio',
+                extension: '.mp3',
+                platform: 'youtube',
+                author: meta?['author']?['name'] ?? 'YouTube User',
+                id: (meta?['videoId'] ?? _extractId(url)) + "_audio",
+                thumbnailUrl: meta?['thumbnail'],
+              ));
+            }
+          }
+        }
+      } catch (e) {
+        print("[AIO ENGINE] YT Audio Error: $e");
+      }
+
+      return results.isNotEmpty ? results : null;
+    } catch (e) {
+      print("[AIO ENGINE] YouTube Scraper Error: $e");
       return null;
-    } catch (e) { return null; }
+    }
   }
 
   static Future<List<ScrapedMedia>?> _getUniversalOn4t(String targetUrl) async {

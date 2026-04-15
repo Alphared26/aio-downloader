@@ -368,7 +368,8 @@ class _HomePageState extends State<HomePage> {
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Icon(
-                              media.type == 'video' ? Icons.play_arrow_rounded : Icons.image_rounded,
+                              media.type == 'video' ? Icons.play_arrow_rounded : 
+                              media.type == 'audio' ? Icons.audiotrack_rounded : Icons.image_rounded,
                               color: Colors.white, size: 14,
                             ),
                           ),
@@ -408,24 +409,20 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         children: [
           Container(
-            width: 44, height: 44,
+            width: 60, height: 60,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                colors: [Color(0xFF4D8EFF), Color(0xFFA855F7)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+              borderRadius: BorderRadius.circular(15),
+              color: Colors.white.withOpacity(0.05),
+              image: const DecorationImage(
+                image: AssetImage('assets/icons/logo2.png'),
+                fit: BoxFit.contain,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF4D8EFF).withAlpha(80),
-                  blurRadius: 12, spreadRadius: 0,
+                  color: const Color(0xFF4D8EFF).withAlpha(30),
+                  blurRadius: 15, spreadRadius: 0,
                 ),
               ],
-            ),
-            child: Icon(
-              isBusy ? Icons.downloading_rounded : Icons.cloud_download_rounded,
-              color: Colors.white, size: 22,
             ),
           ),
           const SizedBox(width: 14),
