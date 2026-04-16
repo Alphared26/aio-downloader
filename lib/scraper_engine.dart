@@ -11,6 +11,7 @@ class ScrapedMedia {
   final String author;
   final String id;
   final String? thumbnailUrl;
+  final String? title;
 
   ScrapedMedia({
     required this.url, 
@@ -20,6 +21,7 @@ class ScrapedMedia {
     this.author = 'user',
     this.id = '',
     this.thumbnailUrl,
+    this.title,
   });
 }
 
@@ -460,6 +462,7 @@ class AntiGravityEngine {
                 author: meta?['author']?['name'] ?? 'YouTube User',
                 id: meta?['videoId'] ?? _extractId(url),
                 thumbnailUrl: meta?['thumbnail'],
+                title: meta?['title'],
               ));
               vredenVideoSuccess = true;
             }
@@ -487,6 +490,7 @@ class AntiGravityEngine {
                 author: 'YouTube User',
                 id: _extractId(url),
                 thumbnailUrl: res['thumbnail'],
+                title: res['title'],
               ));
             }
           }
@@ -514,6 +518,7 @@ class AntiGravityEngine {
                 author: meta?['author']?['name'] ?? 'YouTube User',
                 id: (meta?['videoId'] ?? _extractId(url)) + "_audio",
                 thumbnailUrl: meta?['thumbnail'],
+                title: meta?['title'],
               ));
               vredenAudioSuccess = true;
             }
@@ -541,6 +546,7 @@ class AntiGravityEngine {
                 author: 'YouTube User',
                 id: _extractId(url) + "_audio",
                 thumbnailUrl: null,
+                title: res['title'],
               ));
             }
           }

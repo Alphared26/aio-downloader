@@ -327,7 +327,13 @@ class _HomePageState extends State<HomePage> {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        if (media.thumbnailUrl != null)
+                        if (media.type == 'audio')
+                          Container(
+                            color: const Color(0xFF1A1A2E),
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.music_note_rounded, color: Color(0xFF4D8EFF), size: 60),
+                          )
+                        else if (media.thumbnailUrl != null)
                           CachedNetworkImage(
                             imageUrl: media.thumbnailUrl!,
                             fit: BoxFit.cover,
@@ -488,15 +494,17 @@ class _HomePageState extends State<HomePage> {
                   decoration: BoxDecoration(
                     color: _platformColor(d.platform).withAlpha(38),
                   ),
-                  child: d.sourceMedia.thumbnailUrl != null 
-                    ? CachedNetworkImage(
-                        imageUrl: d.sourceMedia.thumbnailUrl!,
-                        fit: BoxFit.cover,
-                        errorWidget: (context, url, error) => Icon(_platformIcon(d.platform),
-                          color: _platformColor(d.platform), size: 20),
-                      )
-                    : Icon(_platformIcon(d.platform),
-                        color: _platformColor(d.platform), size: 20),
+                  child: d.type == 'audio'
+                    ? const Icon(Icons.music_note_rounded, color: Color(0xFF4D8EFF), size: 28)
+                    : (d.sourceMedia.thumbnailUrl != null 
+                        ? CachedNetworkImage(
+                            imageUrl: d.sourceMedia.thumbnailUrl!,
+                            fit: BoxFit.cover,
+                            errorWidget: (context, url, error) => Icon(_platformIcon(d.platform),
+                              color: _platformColor(d.platform), size: 20),
+                          )
+                        : Icon(_platformIcon(d.platform),
+                            color: _platformColor(d.platform), size: 20)),
                 ),
               ),
               const SizedBox(width: 14),

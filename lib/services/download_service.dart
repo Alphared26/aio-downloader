@@ -174,12 +174,35 @@ class DownloadService extends ChangeNotifier {
     selectedMediaIndices = {};
     notifyListeners();
 
+    // Slow-API notification timers
+    bool apiResponded = false;
+    final slowTimer = Timer(const Duration(seconds: 15), () {
+      if (!apiResponded) {
+        _emitStatus(DownloadStatusType.invalid,
+            '⏳ Mohon tunggu, respon API agak lama...');
+        scrapingStatus = 'Menunggu respon API...';
+        notifyListeners();
+      }
+    });
+    final deadTimer = Timer(const Duration(seconds: 160), () {
+      if (!apiResponded) {
+        _emitStatus(DownloadStatusType.failure,
+            '⚠️ API sedang tidak aktif, coba lagi nanti');
+        isScraping = false;
+        scrapingStatus = '';
+        notifyListeners();
+      }
+    });
+
     try {
       String qualityStr = 'auto';
       if (quality == DownloadQuality.q720) qualityStr = 'q720';
       if (quality == DownloadQuality.q1080) qualityStr = 'q1080';
 
       final results = await AntiGravityEngine.extractVideoData(url, quality: qualityStr);
+      apiResponded = true;
+      slowTimer.cancel();
+      deadTimer.cancel();
 
       if (results == null || results.isEmpty) {
         isScraping = false;
@@ -212,6 +235,9 @@ class DownloadService extends ChangeNotifier {
       scrapingStatus = '';
       notifyListeners();
     } catch (e) {
+      apiResponded = true;
+      slowTimer.cancel();
+      deadTimer.cancel();
       isScraping = false;
       scrapingStatus = '';
       notifyListeners();
@@ -286,17 +312,23 @@ class DownloadService extends ChangeNotifier {
     final now = DateTime.now();
     final dateStr = '${now.day.toString().padLeft(2,'0')}-${now.month.toString().padLeft(2,'0')}-${now.year}';
     
-    String cleanAuthor = media.author.replaceAll(RegExp(r'[^\w]'), '');
-    if (cleanAuthor.isEmpty) cleanAuthor = 'user';
-    
-    // Check if it's a multi-item (has index suffix in ID like _1, _2)
     String fileName;
-    if (media.id.contains('_')) {
-      final parts = media.id.split('_');
-      final index = parts.last;
-      fileName = '${media.platform}_${cleanAuthor}_${index}_$dateStr${media.extension}';
+    if (media.platform == 'youtube' && media.title != null && media.title!.isNotEmpty) {
+      // Use sanitized title for YouTube
+      String sanitizedTitle = _sanitizeFileName(media.title!);
+      fileName = '$sanitizedTitle${media.extension}';
     } else {
-      fileName = '${media.platform}_${cleanAuthor}_$dateStr${media.extension}';
+      String cleanAuthor = media.author.replaceAll(RegExp(r'[^\w]'), '');
+      if (cleanAuthor.isEmpty) cleanAuthor = 'user';
+      
+      // Check if it's a multi-item (has index suffix in ID like _1, _2)
+      if (media.id.contains('_')) {
+        final parts = media.id.split('_');
+        final index = parts.last;
+        fileName = '${media.platform}_${cleanAuthor}_${index}_$dateStr${media.extension}';
+      } else {
+        fileName = '${media.platform}_${cleanAuthor}_$dateStr${media.extension}';
+      }
     }
 
     ActiveDownload download;
@@ -426,6 +458,14 @@ class DownloadService extends ChangeNotifier {
     await Future.delayed(const Duration(seconds: 5));
     activeDownloads.removeWhere((d) => d.id == download.id);
     notifyListeners();
+  }
+
+  String _sanitizeFileName(String name) {
+    // Remove characters not allowed in filenames
+    // Characters like / \ : * ? " < > |
+    return name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+               .replaceAll(RegExp(r'\s+'), ' ')
+               .trim();
   }
 }
 

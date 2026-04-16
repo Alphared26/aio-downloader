@@ -20,7 +20,11 @@ void main() async {
 
   // Initialize services
   DownloadService.initForegroundTask();
-  await NotificationService().initialize();
+  try {
+    await NotificationService().initialize();
+  } catch (e) {
+    debugPrint('NotificationService init error: $e');
+  }
   await SettingsService().init();
 
   // Lock portrait orientation
