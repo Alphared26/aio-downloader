@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+
 import 'package:html/parser.dart' as html_parser;
 
 class ScrapedMedia {
@@ -434,14 +434,15 @@ class AntiGravityEngine {
       print("[AIO ENGINE] Fetching YouTube from Vreden (Video & Audio)...");
       final encodedUrl = Uri.encodeComponent(url);
       
-      // Map quality to Vreden format
-      String vQual = 'hd720';
-      if (quality == 'q1080') vQual = 'hd1080';
-      if (quality == 'q360') vQual = 'medium';
+      // Map quality to Vreden format (Numeric as per user spec)
+      String vQual = '720';
+      if (quality == 'q1080') vQual = '1080';
+      if (quality == 'q360') vQual = '360';
 
       final results = <ScrapedMedia>[];
 
       // 1. Fetch VIDEO
+      bool vredenVideoSuccess = false;
       try {
         final vUrl = '$_vredenBase/api/v1/download/youtube/video?url=$encodedUrl&quality=$vQual';
         final response = await http.get(Uri.parse(vUrl)).timeout(const Duration(seconds: 25));
@@ -460,14 +461,42 @@ class AntiGravityEngine {
                 id: meta?['videoId'] ?? _extractId(url),
                 thumbnailUrl: meta?['thumbnail'],
               ));
+              vredenVideoSuccess = true;
             }
           }
         }
       } catch (e) {
-        print("[AIO ENGINE] YT Video Error: $e");
+        print("[AIO ENGINE] YT Vreden Video Error: $e");
+      }
+
+      // Fallback to Nexray for VIDEO
+      if (!vredenVideoSuccess) {
+        try {
+          print("[AIO ENGINE] Vreden Video failed, trying Nexray...");
+          final nUrl = '$_nexrayBase/downloader/ytmp4?url=$encodedUrl&resolusi=$vQual';
+          final response = await http.get(Uri.parse(nUrl)).timeout(const Duration(seconds: 25));
+          if (response.statusCode == 200) {
+            final data = json.decode(response.body);
+            if (data['status'] == true && data['result'] != null) {
+              final res = data['result'];
+              results.add(ScrapedMedia(
+                url: res['url'],
+                type: 'video',
+                extension: '.mp4',
+                platform: 'youtube',
+                author: 'YouTube User',
+                id: _extractId(url),
+                thumbnailUrl: res['thumbnail'],
+              ));
+            }
+          }
+        } catch (e) {
+          print("[AIO ENGINE] YT Nexray Video Error: $e");
+        }
       }
 
       // 2. Fetch AUDIO
+      bool vredenAudioSuccess = false;
       try {
         final aUrl = '$_vredenBase/api/v1/download/youtube/audio?url=$encodedUrl&quality=128';
         final response = await http.get(Uri.parse(aUrl)).timeout(const Duration(seconds: 25));
@@ -486,11 +515,38 @@ class AntiGravityEngine {
                 id: (meta?['videoId'] ?? _extractId(url)) + "_audio",
                 thumbnailUrl: meta?['thumbnail'],
               ));
+              vredenAudioSuccess = true;
             }
           }
         }
       } catch (e) {
-        print("[AIO ENGINE] YT Audio Error: $e");
+        print("[AIO ENGINE] YT Vreden Audio Error: $e");
+      }
+
+      // Fallback to Nexray for AUDIO
+      if (!vredenAudioSuccess) {
+        try {
+          print("[AIO ENGINE] Vreden Audio failed, trying Nexray...");
+          final nUrl = '$_nexrayBase/downloader/ytmp3?url=$encodedUrl';
+          final response = await http.get(Uri.parse(nUrl)).timeout(const Duration(seconds: 25));
+          if (response.statusCode == 200) {
+            final data = json.decode(response.body);
+            if (data['status'] == true && data['result'] != null) {
+              final res = data['result'];
+              results.add(ScrapedMedia(
+                url: res['url'],
+                type: 'audio',
+                extension: '.mp3',
+                platform: 'youtube',
+                author: 'YouTube User',
+                id: _extractId(url) + "_audio",
+                thumbnailUrl: null,
+              ));
+            }
+          }
+        } catch (e) {
+          print("[AIO ENGINE] YT Nexray Audio Error: $e");
+        }
       }
 
       return results.isNotEmpty ? results : null;
