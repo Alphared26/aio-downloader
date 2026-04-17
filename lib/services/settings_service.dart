@@ -15,7 +15,7 @@ class SettingsService extends ChangeNotifier {
 
   static const String defaultDownloadPath = '/storage/emulated/0/Download';
   static const String githubUrl = 'https://github.com/Alphared26/aio-downloader';
-  static const String appVersion = '2.0.0';
+  static const String appVersion = '2.5.0';
 
   DownloadQuality _quality = DownloadQuality.auto;
   DownloadQuality get quality => _quality;

@@ -252,7 +252,8 @@ class _HistoryPageState extends State<HistoryPage> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                r.type == 'video' ? Icons.videocam_rounded : Icons.image_rounded,
+                r.type == 'video' ? Icons.videocam_rounded : 
+                r.type == 'audio' ? Icons.audiotrack_rounded : Icons.image_rounded,
                 color: _platformColor(r.platform), size: 20),
             ),
             const SizedBox(width: 12),

@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../services/download_service.dart';
 import '../services/settings_service.dart';
+import '../scraper_engine.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -65,70 +66,78 @@ class _HomePageState extends State<HomePage> {
     return Consumer<DownloadService>(
       builder: (context, svc, _) {
         final bool hasActive = svc.activeDownloads.isNotEmpty;
-        final bool isBusy = svc.isScraping || hasActive;
+        final bool isBusy = svc.isScraping; // Only block search during active scraping
+        final bool isActive = svc.isScraping || hasActive; // For status card display
 
         return Column(
           children: [
-            // Status Hero Card
-            _buildStatusCard(context, svc, isBusy),
+            // Status Hero Card (pinned at top)
+            _buildStatusCard(context, svc, isActive),
             const SizedBox(height: 12),
 
-            // Manual URL Input
+            // Manual URL Input (pinned at top)
             _buildUrlInput(context, isBusy),
             const SizedBox(height: 16),
 
-            // Active Downloads Section
-            // 2. Scrape Results (Multi-select)
-            if (svc.lastScrapedResults != null) ...[
-              _buildScrapeResultsHeader(svc),
-              _buildScrapeResultsView(svc),
-              const SizedBox(height: 20),
-            ],
+            // Scrollable content area
+            Expanded(
+              child: (!isActive && svc.lastScrapedResults == null && svc.activeDownloads.isEmpty)
+                ? _buildIdleState()
+                : SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      children: [
+                        // Scrape Results (Multi-select)
+                        if (svc.lastScrapedResults != null) ...[
+                          _buildScrapeResultsHeader(svc),
+                          _buildScrapeResultsView(svc),
+                          const SizedBox(height: 20),
+                        ],
 
-            // 3. Active Downloads
-            if (hasActive || svc.isScraping) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(children: [
-                      Container(
-                        width: 3, height: 14,
-                        margin: const EdgeInsets.only(right: 8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF4D8EFF),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      Text('SEDANG BERJALAN',
-                        style: GoogleFonts.inter(
-                          fontSize: 11, fontWeight: FontWeight.w700,
-                          letterSpacing: 1.2, color: const Color(0xFF4D8EFF),
-                        ),
-                      ),
-                    ]),
-                    if (svc.activeDownloads.any((d) => d.isComplete || d.isError))
-                      TextButton(
-                        onPressed: () {
-                          svc.activeDownloads.removeWhere((d) => d.isComplete || d.isError);
-                        },
-                        child: Text('Bersihkan', 
-                          style: GoogleFonts.inter(fontSize: 11, color: Colors.white38)),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              ...svc.activeDownloads.map((d) => _buildDownloadCard(d)),
-              if (svc.isScraping && svc.activeDownloads.isEmpty)
-                _buildScrapingCard(svc.scrapingStatus),
-              const SizedBox(height: 16),
-            ],
-
-            // Idle Illustration
-            if (!isBusy && svc.lastScrapedResults == null && svc.activeDownloads.isEmpty)
-              Expanded(child: _buildIdleState()),
+                        // Active Downloads
+                        if (hasActive || svc.isScraping) ...[
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(children: [
+                                  Container(
+                                    width: 3, height: 14,
+                                    margin: const EdgeInsets.only(right: 8),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF4D8EFF),
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                  Text('SEDANG BERJALAN',
+                                    style: GoogleFonts.inter(
+                                      fontSize: 11, fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.2, color: const Color(0xFF4D8EFF),
+                                    ),
+                                  ),
+                                ]),
+                                if (svc.activeDownloads.any((d) => d.isComplete || d.isError))
+                                  TextButton(
+                                    onPressed: () {
+                                      svc.activeDownloads.removeWhere((d) => d.isComplete || d.isError);
+                                    },
+                                    child: Text('Bersihkan', 
+                                      style: GoogleFonts.inter(fontSize: 11, color: Colors.white38)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          ...svc.activeDownloads.map((d) => _buildDownloadCard(d)),
+                          if (svc.isScraping && svc.activeDownloads.isEmpty)
+                            _buildScrapingCard(svc.scrapingStatus),
+                          const SizedBox(height: 16),
+                        ],
+                      ],
+                    ),
+                  ),
+            ),
           ],
         );
       },
@@ -227,47 +236,131 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  String _formatFileSize(int? bytes) {
+    if (bytes == null) return '';
+    if (bytes > 1024 * 1024) return '~${(bytes / 1024 / 1024).toStringAsFixed(1)} MB';
+    if (bytes > 1024) return '~${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '~$bytes B';
+  }
+
+  String _displayFileName(ScrapedMedia media) {
+    if (media.title != null && media.title!.isNotEmpty) return media.title!;
+    final typeLabel = media.type == 'video' ? 'Video' : media.type == 'audio' ? 'Audio' : 'Foto';
+    return '$typeLabel · ${_platformLabel(media.platform)}';
+  }
+
   Widget _buildScrapeResultsHeader(DownloadService svc) {
     final count = svc.lastScrapedResults?.length ?? 0;
     final selectedCount = svc.selectedMediaIndices.length;
     
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('MEDIA DITEMUKAN',
-                style: GoogleFonts.inter(
-                  fontSize: 11, fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2, color: const Color(0xFFA855F7),
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('MEDIA DITEMUKAN',
+                    style: GoogleFonts.inter(
+                      fontSize: 11, fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2, color: const Color(0xFFA855F7),
+                    ),
+                  ),
+                  Text('$count item · $selectedCount dipilih',
+                    style: GoogleFonts.inter(fontSize: 10, color: Colors.white38)),
+                ],
               ),
-              Text('$count item terdeteksi · $selectedCount dipilih',
-                style: GoogleFonts.inter(fontSize: 10, color: Colors.white38)),
+              Row(
+                children: [
+                  TextButton(
+                    onPressed: () => svc.clearResults(),
+                    child: Text('Batal', style: GoogleFonts.inter(fontSize: 12, color: Colors.redAccent)),
+                  ),
+                  const SizedBox(width: 4),
+                  ElevatedButton(
+                    onPressed: selectedCount > 0 ? () => svc.downloadSelected() : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF4D8EFF),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    child: Text('Unduh Pilihan', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
             ],
           ),
+          const SizedBox(height: 8),
+          // Quality picker row
           Row(
             children: [
-              TextButton(
-                onPressed: () => svc.clearResults(),
-                child: Text('Batal', style: GoogleFonts.inter(fontSize: 12, color: Colors.redAccent)),
-              ),
-              const SizedBox(width: 4),
-              ElevatedButton(
-                onPressed: selectedCount > 0 ? () => svc.downloadSelected() : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4D8EFF),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A2E),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF2A2A3E)),
                 ),
-                child: Text('Unduh Pilihan', style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.bold)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.high_quality_rounded, size: 14, color: Color(0xFF4D8EFF)),
+                    const SizedBox(width: 6),
+                    DropdownButton<DownloadQuality>(
+                      value: svc.scrapeQuality,
+                      dropdownColor: const Color(0xFF1A1A2E),
+                      underline: const SizedBox(),
+                      isDense: true,
+                      style: GoogleFonts.inter(fontSize: 12, color: Colors.white),
+                      items: DownloadQuality.values.map((q) {
+                        String label = 'Auto';
+                        if (q == DownloadQuality.q720) label = '720p';
+                        if (q == DownloadQuality.q1080) label = '1080p';
+                        return DropdownMenuItem(value: q, child: Text(label));
+                      }).toList(),
+                      onChanged: (v) {
+                        if (v != null) svc.setScrapeQuality(v);
+                      },
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
+              Text('Kualitas unduhan', style: GoogleFonts.inter(fontSize: 10, color: Colors.white30)),
             ],
           ),
+          // YouTube video loading indicator
+          if (svc.isFetchingVideo) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF6B00).withAlpha(20),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFFF6B00).withAlpha(50)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 12, height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      valueColor: const AlwaysStoppedAnimation(Color(0xFFFF6B00)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('Mencari video YouTube...',
+                    style: GoogleFonts.inter(fontSize: 10, color: const Color(0xFFFF6B00), fontWeight: FontWeight.w500)),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -297,7 +390,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         SizedBox(
-          height: 220,
+          height: 250,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -305,6 +398,7 @@ class _HomePageState extends State<HomePage> {
             itemBuilder: (context, index) {
               final media = results[index];
               final isSelected = svc.selectedMediaIndices.contains(index);
+              final sizeStr = _formatFileSize(media.fileSize);
               
               return GestureDetector(
                 onTap: () => svc.toggleSelection(index),
@@ -322,59 +416,93 @@ class _HomePageState extends State<HomePage> {
                       BoxShadow(color: const Color(0xFF4D8EFF).withAlpha(40), blurRadius: 8)
                     ] : [],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(14),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        if (media.thumbnailUrl != null)
-                          CachedNetworkImage(
-                            imageUrl: media.thumbnailUrl!,
-                            fit: BoxFit.cover,
-                            placeholder: (context, url) => Container(color: Colors.white10),
-                            errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.white12),
-                          )
-                        else
-                          Container(
-                            color: const Color(0xFF1A1A2E),
-                            child: const Icon(Icons.movie_rounded, color: Colors.white12, size: 40),
-                          ),
-                        
-                        Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Colors.transparent, Colors.black.withAlpha(150)],
-                            ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Thumbnail area
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (media.type == 'audio')
+                                Container(
+                                  color: const Color(0xFF1A1A2E),
+                                  alignment: Alignment.center,
+                                  child: const Icon(Icons.music_note_rounded, color: Color(0xFF4D8EFF), size: 50),
+                                )
+                              else if (media.thumbnailUrl != null)
+                                CachedNetworkImage(
+                                  imageUrl: media.thumbnailUrl!,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(color: Colors.white10),
+                                  errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.white12),
+                                )
+                              else
+                                Container(
+                                  color: const Color(0xFF1A1A2E),
+                                  child: const Icon(Icons.movie_rounded, color: Colors.white12, size: 40),
+                                ),
+                              
+                              // Checkmark
+                              Positioned(
+                                top: 6, right: 6,
+                                child: Icon(
+                                  isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                                  color: isSelected ? const Color(0xFF4D8EFF) : Colors.white54,
+                                  size: 22,
+                                ),
+                              ),
+                              
+                              // Type badge + size
+                              Positioned(
+                                bottom: 6, left: 6, right: 6,
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withAlpha(170),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            media.type == 'video' ? Icons.play_arrow_rounded : 
+                                            media.type == 'audio' ? Icons.audiotrack_rounded : Icons.image_rounded,
+                                            color: Colors.white, size: 12,
+                                          ),
+                                          if (sizeStr.isNotEmpty) ...[
+                                            const SizedBox(width: 4),
+                                            Text(sizeStr, style: GoogleFonts.inter(fontSize: 9, color: Colors.white70, fontWeight: FontWeight.w600)),
+                                          ],
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        
-                        Positioned(
-                          top: 8, right: 8,
-                          child: Icon(
-                            isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
-                            color: isSelected ? const Color(0xFF4D8EFF) : Colors.white54,
-                            size: 24,
+                      ),
+                      // File info text below thumbnail
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+                        child: Text(
+                          _displayFileName(media),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.inter(
+                            fontSize: 10, fontWeight: FontWeight.w500,
+                            color: Colors.white60,
+                            height: 1.3,
                           ),
                         ),
-                        
-                        Positioned(
-                          bottom: 8, left: 8,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withAlpha(150),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Icon(
-                              media.type == 'video' ? Icons.play_arrow_rounded : Icons.image_rounded,
-                              color: Colors.white, size: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -408,24 +536,20 @@ class _HomePageState extends State<HomePage> {
       child: Row(
         children: [
           Container(
-            width: 44, height: 44,
+            width: 60, height: 60,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                colors: [Color(0xFF4D8EFF), Color(0xFFA855F7)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+              borderRadius: BorderRadius.circular(15),
+              color: Colors.white.withOpacity(0.05),
+              image: const DecorationImage(
+                image: AssetImage('assets/icons/logo2.png'),
+                fit: BoxFit.contain,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF4D8EFF).withAlpha(80),
-                  blurRadius: 12, spreadRadius: 0,
+                  color: const Color(0xFF4D8EFF).withAlpha(30),
+                  blurRadius: 15, spreadRadius: 0,
                 ),
               ],
-            ),
-            child: Icon(
-              isBusy ? Icons.downloading_rounded : Icons.cloud_download_rounded,
-              color: Colors.white, size: 22,
             ),
           ),
           const SizedBox(width: 14),
@@ -491,15 +615,17 @@ class _HomePageState extends State<HomePage> {
                   decoration: BoxDecoration(
                     color: _platformColor(d.platform).withAlpha(38),
                   ),
-                  child: d.sourceMedia.thumbnailUrl != null 
-                    ? CachedNetworkImage(
-                        imageUrl: d.sourceMedia.thumbnailUrl!,
-                        fit: BoxFit.cover,
-                        errorWidget: (context, url, error) => Icon(_platformIcon(d.platform),
-                          color: _platformColor(d.platform), size: 20),
-                      )
-                    : Icon(_platformIcon(d.platform),
-                        color: _platformColor(d.platform), size: 20),
+                  child: d.type == 'audio'
+                    ? const Icon(Icons.music_note_rounded, color: Color(0xFF4D8EFF), size: 28)
+                    : (d.sourceMedia.thumbnailUrl != null 
+                        ? CachedNetworkImage(
+                            imageUrl: d.sourceMedia.thumbnailUrl!,
+                            fit: BoxFit.cover,
+                            errorWidget: (context, url, error) => Icon(_platformIcon(d.platform),
+                              color: _platformColor(d.platform), size: 20),
+                          )
+                        : Icon(_platformIcon(d.platform),
+                            color: _platformColor(d.platform), size: 20)),
                 ),
               ),
               const SizedBox(width: 14),

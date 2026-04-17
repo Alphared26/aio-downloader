@@ -63,6 +63,9 @@ class DownloadService extends ChangeNotifier {
   bool isScraping = false;
   String scrapingStatus = '';
 
+  // Per-session quality (set by quality picker in download page)
+  DownloadQuality scrapeQuality = DownloadQuality.auto;
+
   // Results for preview
   List<ScrapedMedia>? lastScrapedResults;
   Set<int> selectedMediaIndices = {};
@@ -172,7 +175,28 @@ class DownloadService extends ChangeNotifier {
     scrapingStatus = 'Mencari media...';
     lastScrapedResults = null;
     selectedMediaIndices = {};
+    scrapeQuality = quality; // Initialize per-session quality from settings
     notifyListeners();
+
+    // Slow-API notification timers
+    bool apiResponded = false;
+    final slowTimer = Timer(const Duration(seconds: 15), () {
+      if (!apiResponded) {
+        _emitStatus(DownloadStatusType.invalid,
+            '⏳ Mohon tunggu, respon API agak lama...');
+        scrapingStatus = 'Menunggu respon API...';
+        notifyListeners();
+      }
+    });
+    final deadTimer = Timer(const Duration(seconds: 40), () {
+      if (!apiResponded) {
+        _emitStatus(DownloadStatusType.failure,
+            '⚠️ API sedang tidak aktif, coba lagi nanti');
+        isScraping = false;
+        scrapingStatus = '';
+        notifyListeners();
+      }
+    });
 
     try {
       String qualityStr = 'auto';
@@ -180,6 +204,9 @@ class DownloadService extends ChangeNotifier {
       if (quality == DownloadQuality.q1080) qualityStr = 'q1080';
 
       final results = await AntiGravityEngine.extractVideoData(url, quality: qualityStr);
+      apiResponded = true;
+      slowTimer.cancel();
+      deadTimer.cancel();
 
       if (results == null || results.isEmpty) {
         isScraping = false;
@@ -211,12 +238,90 @@ class DownloadService extends ChangeNotifier {
       isScraping = false;
       scrapingStatus = '';
       notifyListeners();
+
+      // Fetch file sizes in background (non-blocking)
+      _fetchFileSizes(results);
+
+      // YouTube: fetch video in background (audio was returned first)
+      final bool isYoutube = url.contains('youtube.com') || url.contains('youtu.be');
+      if (isYoutube) {
+        _fetchYoutubeVideoBackground(url, qualityStr);
+      }
     } catch (e) {
+      apiResponded = true;
+      slowTimer.cancel();
+      deadTimer.cancel();
       isScraping = false;
       scrapingStatus = '';
       notifyListeners();
       _emitStatus(DownloadStatusType.failure, 'Terjadi kesalahan saat mencari media');
     }
+  }
+
+  /// Background fetch for YouTube video (120s timeout)
+  /// Appends video to lastScrapedResults when ready
+  bool isFetchingVideo = false;
+  Future<void> _fetchYoutubeVideoBackground(String url, String quality) async {
+    isFetchingVideo = true;
+    notifyListeners();
+
+    // Show slow notification after 30s
+    final slowVideoTimer = Timer(const Duration(seconds: 30), () {
+      if (isFetchingVideo) {
+        _emitStatus(DownloadStatusType.invalid,
+            '⏳ Video YouTube sedang diproses, audio sudah bisa diunduh...');
+      }
+    });
+
+    try {
+      final video = await AntiGravityEngine.getYoutubeVideoOnly(url, quality: quality);
+      slowVideoTimer.cancel();
+      isFetchingVideo = false;
+
+      if (video != null && lastScrapedResults != null) {
+        // Insert video at the beginning (before audio)
+        lastScrapedResults!.insert(0, video);
+        selectedMediaIndices = {};
+        for (int i = 0; i < lastScrapedResults!.length; i++) {
+          selectedMediaIndices.add(i);
+        }
+        notifyListeners();
+        _emitStatus(DownloadStatusType.success, '✓ Video YouTube berhasil ditemukan!');
+        // Fetch size for the new video
+        _fetchFileSizes([video]);
+      } else if (video == null) {
+        _emitStatus(DownloadStatusType.failure,
+            '⚠️ Video YouTube tidak tersedia, coba lagi nanti');
+        notifyListeners();
+      }
+    } catch (e) {
+      slowVideoTimer.cancel();
+      isFetchingVideo = false;
+      notifyListeners();
+      _emitStatus(DownloadStatusType.failure,
+          '⚠️ Gagal mengambil video YouTube');
+    }
+  }
+
+  /// Fetch file sizes via HEAD requests for items that don't already have sizes
+  Future<void> _fetchFileSizes(List<ScrapedMedia> results) async {
+    final futures = results.where((m) => m.fileSize == null).map((media) async {
+      try {
+        final request = http.Request('HEAD', Uri.parse(media.url));
+        request.headers['User-Agent'] = 'Mozilla/5.0';
+        final response = await request.send().timeout(const Duration(seconds: 8));
+        if (response.contentLength != null && response.contentLength! > 0) {
+          media.fileSize = response.contentLength;
+          notifyListeners();
+        }
+      } catch (_) {}
+    });
+    await Future.wait(futures);
+  }
+
+  void setScrapeQuality(DownloadQuality q) {
+    scrapeQuality = q;
+    notifyListeners();
   }
 
   Future<void> downloadSelected() async {
@@ -233,9 +338,8 @@ class DownloadService extends ChangeNotifier {
 
     await _startForegroundService();
     
-    for (var media in toDownload) {
-      await _downloadSingle(media);
-    }
+    // Download all files in parallel instead of sequentially
+    await Future.wait(toDownload.map((media) => _downloadSingle(media)));
   }
 
 
@@ -286,17 +390,23 @@ class DownloadService extends ChangeNotifier {
     final now = DateTime.now();
     final dateStr = '${now.day.toString().padLeft(2,'0')}-${now.month.toString().padLeft(2,'0')}-${now.year}';
     
-    String cleanAuthor = media.author.replaceAll(RegExp(r'[^\w]'), '');
-    if (cleanAuthor.isEmpty) cleanAuthor = 'user';
-    
-    // Check if it's a multi-item (has index suffix in ID like _1, _2)
     String fileName;
-    if (media.id.contains('_')) {
-      final parts = media.id.split('_');
-      final index = parts.last;
-      fileName = '${media.platform}_${cleanAuthor}_${index}_$dateStr${media.extension}';
+    if (media.platform == 'youtube' && media.title != null && media.title!.isNotEmpty) {
+      // Use sanitized title for YouTube
+      String sanitizedTitle = _sanitizeFileName(media.title!);
+      fileName = '$sanitizedTitle${media.extension}';
     } else {
-      fileName = '${media.platform}_${cleanAuthor}_$dateStr${media.extension}';
+      String cleanAuthor = media.author.replaceAll(RegExp(r'[^\w]'), '');
+      if (cleanAuthor.isEmpty) cleanAuthor = 'user';
+      
+      // Check if it's a multi-item (has index suffix in ID like _1, _2)
+      if (media.id.contains('_')) {
+        final parts = media.id.split('_');
+        final index = parts.last;
+        fileName = '${media.platform}_${cleanAuthor}_${index}_$dateStr${media.extension}';
+      } else {
+        fileName = '${media.platform}_${cleanAuthor}_$dateStr${media.extension}';
+      }
     }
 
     ActiveDownload download;
@@ -426,6 +536,14 @@ class DownloadService extends ChangeNotifier {
     await Future.delayed(const Duration(seconds: 5));
     activeDownloads.removeWhere((d) => d.id == download.id);
     notifyListeners();
+  }
+
+  String _sanitizeFileName(String name) {
+    // Remove characters not allowed in filenames
+    // Characters like / \ : * ? " < > |
+    return name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+               .replaceAll(RegExp(r'\s+'), ' ')
+               .trim();
   }
 }
 

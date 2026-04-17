@@ -11,6 +11,7 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'services/download_service.dart';
 import 'services/notification_service.dart';
 import 'services/settings_service.dart';
+import 'services/update_service.dart';
 import 'pages/home_page.dart';
 import 'pages/history_page.dart';
 import 'pages/settings_page.dart';
@@ -20,7 +21,11 @@ void main() async {
 
   // Initialize services
   DownloadService.initForegroundTask();
-  await NotificationService().initialize();
+  try {
+    await NotificationService().initialize();
+  } catch (e) {
+    debugPrint('NotificationService init error: $e');
+  }
   await SettingsService().init();
 
   // Lock portrait orientation
@@ -92,6 +97,8 @@ class _MainShellState extends State<MainShell> {
     // Listen to download status events and show popups
     SchedulerBinding.instance.addPostFrameCallback((_) {
       _statusSub = context.read<DownloadService>().statusStream.listen(_showStatusMessage);
+      // Check for app updates from GitHub
+      UpdateService.checkForUpdate(context);
     });
 
     final svc = context.read<DownloadService>();
