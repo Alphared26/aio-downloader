@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/icons/ic_launcher.png" width="96" alt="AIO Downloader Icon"/>
+<img src="/icon.png" width="125%" alt="AIO Downloader Icon"/>
 
 # AIO Downloader
 ### Download video & foto dari mana saja
@@ -19,7 +19,6 @@
 |---|---|
 | 📥 Multi-Platform | Instagram, TikTok, Facebook, YouTube |
 | 🔗 Share Intent | Bagikan link dari app lain → langsung unduh |
-| ⌨️ Manual Input | Tempel link langsung di dalam app |
 | 📊 Progress Real-time | Progress bar + notifikasi persentase |
 | 🔔 Background Download | Download tetap berjalan walau app di-minimize |
 | 📂 Custom Folder | Pilih folder penyimpanan sendiri |
@@ -30,7 +29,7 @@
 
 Lihat di halaman **[Releases](https://github.com/Alphared26/aio-downloader/releases)** untuk download APK terbaru.
 
-## 🛠️ Build Sendiri
+## 🛠️ Build
 
 ```bash
 # Clone repo
