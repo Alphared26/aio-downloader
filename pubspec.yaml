@@ -2,7 +2,7 @@ name: aio_downloader
 description: "AIO Downloader — Download video from any platform"
 publish_to: 'none'
 
-version: 2.0.0
+version: 2.5.0
 
 environment:
   sdk: ^3.9.2

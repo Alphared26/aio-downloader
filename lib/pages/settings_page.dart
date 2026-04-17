@@ -202,7 +202,7 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       title: Text('Kualitas Video',
         style: GoogleFonts.inter(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w600)),
-      subtitle: Text('Pilih resolusi video youtube',
+      subtitle: Text('Resolusi default untuk unduh otomatis',
         style: GoogleFonts.inter(fontSize: 11, color: Colors.white38)),
       trailing: DropdownButton<DownloadQuality>(
         value: settings.quality,

@@ -1,3 +1,4 @@
+
 # Changelog v2.0.0
 
 ## What's New
@@ -17,5 +18,3 @@
 
 ## Size
 *   Compressing and deleting unnecessary files to make the app size smaller
-
-

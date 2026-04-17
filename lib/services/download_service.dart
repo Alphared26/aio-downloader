@@ -63,6 +63,9 @@ class DownloadService extends ChangeNotifier {
   bool isScraping = false;
   String scrapingStatus = '';
 
+  // Per-session quality (set by quality picker in download page)
+  DownloadQuality scrapeQuality = DownloadQuality.auto;
+
   // Results for preview
   List<ScrapedMedia>? lastScrapedResults;
   Set<int> selectedMediaIndices = {};
@@ -172,6 +175,7 @@ class DownloadService extends ChangeNotifier {
     scrapingStatus = 'Mencari media...';
     lastScrapedResults = null;
     selectedMediaIndices = {};
+    scrapeQuality = quality; // Initialize per-session quality from settings
     notifyListeners();
 
     // Slow-API notification timers
@@ -184,7 +188,7 @@ class DownloadService extends ChangeNotifier {
         notifyListeners();
       }
     });
-    final deadTimer = Timer(const Duration(seconds: 160), () {
+    final deadTimer = Timer(const Duration(seconds: 40), () {
       if (!apiResponded) {
         _emitStatus(DownloadStatusType.failure,
             '⚠️ API sedang tidak aktif, coba lagi nanti');
@@ -234,6 +238,15 @@ class DownloadService extends ChangeNotifier {
       isScraping = false;
       scrapingStatus = '';
       notifyListeners();
+
+      // Fetch file sizes in background (non-blocking)
+      _fetchFileSizes(results);
+
+      // YouTube: fetch video in background (audio was returned first)
+      final bool isYoutube = url.contains('youtube.com') || url.contains('youtu.be');
+      if (isYoutube) {
+        _fetchYoutubeVideoBackground(url, qualityStr);
+      }
     } catch (e) {
       apiResponded = true;
       slowTimer.cancel();
@@ -243,6 +256,72 @@ class DownloadService extends ChangeNotifier {
       notifyListeners();
       _emitStatus(DownloadStatusType.failure, 'Terjadi kesalahan saat mencari media');
     }
+  }
+
+  /// Background fetch for YouTube video (120s timeout)
+  /// Appends video to lastScrapedResults when ready
+  bool isFetchingVideo = false;
+  Future<void> _fetchYoutubeVideoBackground(String url, String quality) async {
+    isFetchingVideo = true;
+    notifyListeners();
+
+    // Show slow notification after 30s
+    final slowVideoTimer = Timer(const Duration(seconds: 30), () {
+      if (isFetchingVideo) {
+        _emitStatus(DownloadStatusType.invalid,
+            '⏳ Video YouTube sedang diproses, audio sudah bisa diunduh...');
+      }
+    });
+
+    try {
+      final video = await AntiGravityEngine.getYoutubeVideoOnly(url, quality: quality);
+      slowVideoTimer.cancel();
+      isFetchingVideo = false;
+
+      if (video != null && lastScrapedResults != null) {
+        // Insert video at the beginning (before audio)
+        lastScrapedResults!.insert(0, video);
+        selectedMediaIndices = {};
+        for (int i = 0; i < lastScrapedResults!.length; i++) {
+          selectedMediaIndices.add(i);
+        }
+        notifyListeners();
+        _emitStatus(DownloadStatusType.success, '✓ Video YouTube berhasil ditemukan!');
+        // Fetch size for the new video
+        _fetchFileSizes([video]);
+      } else if (video == null) {
+        _emitStatus(DownloadStatusType.failure,
+            '⚠️ Video YouTube tidak tersedia, coba lagi nanti');
+        notifyListeners();
+      }
+    } catch (e) {
+      slowVideoTimer.cancel();
+      isFetchingVideo = false;
+      notifyListeners();
+      _emitStatus(DownloadStatusType.failure,
+          '⚠️ Gagal mengambil video YouTube');
+    }
+  }
+
+  /// Fetch file sizes via HEAD requests for items that don't already have sizes
+  Future<void> _fetchFileSizes(List<ScrapedMedia> results) async {
+    final futures = results.where((m) => m.fileSize == null).map((media) async {
+      try {
+        final request = http.Request('HEAD', Uri.parse(media.url));
+        request.headers['User-Agent'] = 'Mozilla/5.0';
+        final response = await request.send().timeout(const Duration(seconds: 8));
+        if (response.contentLength != null && response.contentLength! > 0) {
+          media.fileSize = response.contentLength;
+          notifyListeners();
+        }
+      } catch (_) {}
+    });
+    await Future.wait(futures);
+  }
+
+  void setScrapeQuality(DownloadQuality q) {
+    scrapeQuality = q;
+    notifyListeners();
   }
 
   Future<void> downloadSelected() async {
@@ -259,9 +338,8 @@ class DownloadService extends ChangeNotifier {
 
     await _startForegroundService();
     
-    for (var media in toDownload) {
-      await _downloadSingle(media);
-    }
+    // Download all files in parallel instead of sequentially
+    await Future.wait(toDownload.map((media) => _downloadSingle(media)));
   }
 
 

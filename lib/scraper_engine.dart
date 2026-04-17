@@ -12,6 +12,7 @@ class ScrapedMedia {
   final String id;
   final String? thumbnailUrl;
   final String? title;
+  int? fileSize; // estimated file size in bytes (mutable, filled by HEAD request)
 
   ScrapedMedia({
     required this.url, 
@@ -22,6 +23,7 @@ class ScrapedMedia {
     this.id = '',
     this.thumbnailUrl,
     this.title,
+    this.fileSize,
   });
 }
 
@@ -263,11 +265,13 @@ class AntiGravityEngine {
           if (data['code'] == 0 && data['data'] != null) {
             final res = data['data'];
             String author = res['author']?['fullname'] ?? res['author']?['nickname'] ?? 'user';
+            final sizeNowm = res['size_nowm'] ?? res['size'];
             return ScrapedMedia(
               url: 'https://www.tikwm.com${res['play'] ?? res['wmplay']}',
               type: 'video', extension: '.mp4', platform: 'tiktok',
               author: author, id: res['id']?.toString() ?? _extractId(url),
               thumbnailUrl: res['cover'],
+              fileSize: sizeNowm is int ? sizeNowm : null,
             );
           }
         }
@@ -288,6 +292,21 @@ class AntiGravityEngine {
           final mediaList = res['data'] as List;
           final isSlideshow = mediaList.any((m) => m['type'] == 'photo');
           
+          // Single video with size info
+          if (!isSlideshow && mediaList.isNotEmpty) {
+            final author = res['author']?['fullname'] ?? res['author']?['full_name'] ?? res['author']?['nickname'] ?? res['metadata']?['author'] ?? 'user';
+            final firstVideo = mediaList.firstWhere((m) => m['type'] != 'photo', orElse: () => mediaList.first);
+            final sizeNowm = res['size_nowm'];
+            return [
+              ScrapedMedia(
+                url: firstVideo['url'], type: 'video', extension: '.mp4', platform: 'tiktok',
+                author: author, id: _extractId(url),
+                thumbnailUrl: res['cover'] ?? res['metadata']?['cover'] ?? await _getFallbackThumbnail(url),
+                fileSize: sizeNowm is int ? sizeNowm : null,
+              ),
+            ];
+          }
+
           if (isSlideshow) {
             final author = res['author']?['fullname'] ?? res['author']?['full_name'] ?? res['author']?['nickname'] ?? res['metadata']?['author'] ?? 'user';
             final id = _extractId(url);
@@ -431,79 +450,19 @@ class AntiGravityEngine {
     } catch (_) { return null; }
   }
 
+  /// YouTube: Fetch AUDIO only (fast, returns quickly)
+  /// Video is fetched separately via getYoutubeVideoOnly()
   static Future<List<ScrapedMedia>?> _getYoutube(String url, {String quality = 'auto'}) async {
     try {
-      print("[AIO ENGINE] Fetching YouTube from Vreden (Video & Audio)...");
+      print("[AIO ENGINE] Fetching YouTube Audio...");
       final encodedUrl = Uri.encodeComponent(url);
-      
-      // Map quality to Vreden format (Numeric as per user spec)
-      String vQual = '720';
-      if (quality == 'q1080') vQual = '1080';
-      if (quality == 'q360') vQual = '360';
-
       final results = <ScrapedMedia>[];
 
-      // 1. Fetch VIDEO
-      bool vredenVideoSuccess = false;
-      try {
-        final vUrl = '$_vredenBase/api/v1/download/youtube/video?url=$encodedUrl&quality=$vQual';
-        final response = await http.get(Uri.parse(vUrl)).timeout(const Duration(seconds: 25));
-        if (response.statusCode == 200) {
-          final data = json.decode(response.body);
-          if (data['status'] == true && data['result'] != null) {
-            final res = data['result'];
-            if (res['download'] != null && res['download']['url'] != null) {
-              final meta = res['metadata'];
-              results.add(ScrapedMedia(
-                url: res['download']['url'],
-                type: 'video',
-                extension: '.mp4',
-                platform: 'youtube',
-                author: meta?['author']?['name'] ?? 'YouTube User',
-                id: meta?['videoId'] ?? _extractId(url),
-                thumbnailUrl: meta?['thumbnail'],
-                title: meta?['title'],
-              ));
-              vredenVideoSuccess = true;
-            }
-          }
-        }
-      } catch (e) {
-        print("[AIO ENGINE] YT Vreden Video Error: $e");
-      }
-
-      // Fallback to Nexray for VIDEO
-      if (!vredenVideoSuccess) {
-        try {
-          print("[AIO ENGINE] Vreden Video failed, trying Nexray...");
-          final nUrl = '$_nexrayBase/downloader/ytmp4?url=$encodedUrl&resolusi=$vQual';
-          final response = await http.get(Uri.parse(nUrl)).timeout(const Duration(seconds: 25));
-          if (response.statusCode == 200) {
-            final data = json.decode(response.body);
-            if (data['status'] == true && data['result'] != null) {
-              final res = data['result'];
-              results.add(ScrapedMedia(
-                url: res['url'],
-                type: 'video',
-                extension: '.mp4',
-                platform: 'youtube',
-                author: 'YouTube User',
-                id: _extractId(url),
-                thumbnailUrl: res['thumbnail'],
-                title: res['title'],
-              ));
-            }
-          }
-        } catch (e) {
-          print("[AIO ENGINE] YT Nexray Video Error: $e");
-        }
-      }
-
-      // 2. Fetch AUDIO
-      bool vredenAudioSuccess = false;
+      // Fetch AUDIO (priority: Vreden then Nexray)
+      bool audioSuccess = false;
       try {
         final aUrl = '$_vredenBase/api/v1/download/youtube/audio?url=$encodedUrl&quality=128';
-        final response = await http.get(Uri.parse(aUrl)).timeout(const Duration(seconds: 25));
+        final response = await http.get(Uri.parse(aUrl)).timeout(const Duration(seconds: 30));
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
           if (data['status'] == true && data['result'] != null) {
@@ -520,7 +479,7 @@ class AntiGravityEngine {
                 thumbnailUrl: meta?['thumbnail'],
                 title: meta?['title'],
               ));
-              vredenAudioSuccess = true;
+              audioSuccess = true;
             }
           }
         }
@@ -529,11 +488,11 @@ class AntiGravityEngine {
       }
 
       // Fallback to Nexray for AUDIO
-      if (!vredenAudioSuccess) {
+      if (!audioSuccess) {
         try {
           print("[AIO ENGINE] Vreden Audio failed, trying Nexray...");
           final nUrl = '$_nexrayBase/downloader/ytmp3?url=$encodedUrl';
-          final response = await http.get(Uri.parse(nUrl)).timeout(const Duration(seconds: 25));
+          final response = await http.get(Uri.parse(nUrl)).timeout(const Duration(seconds: 30));
           if (response.statusCode == 200) {
             final data = json.decode(response.body);
             if (data['status'] == true && data['result'] != null) {
@@ -557,7 +516,80 @@ class AntiGravityEngine {
 
       return results.isNotEmpty ? results : null;
     } catch (e) {
-      print("[AIO ENGINE] YouTube Scraper Error: $e");
+      print("[AIO ENGINE] YouTube Audio Scraper Error: $e");
+      return null;
+    }
+  }
+
+  /// YouTube: Fetch VIDEO only (slow, 120s timeout per API)
+  /// Called separately in background by download_service
+  static Future<ScrapedMedia?> getYoutubeVideoOnly(String url, {String quality = 'auto'}) async {
+    try {
+      print("[AIO ENGINE] Fetching YouTube Video (background, 120s timeout)...");
+      final encodedUrl = Uri.encodeComponent(url);
+      
+      String vQual = '720';
+      if (quality == 'q1080') vQual = '1080';
+      if (quality == 'q360') vQual = '360';
+
+      // Try Vreden Video (120s timeout)
+      try {
+        final vUrl = '$_vredenBase/api/v1/download/youtube/video?url=$encodedUrl&quality=$vQual';
+        final response = await http.get(Uri.parse(vUrl)).timeout(const Duration(seconds: 120));
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          if (data['status'] == true && data['result'] != null) {
+            final res = data['result'];
+            if (res['download'] != null && res['download']['url'] != null) {
+              final meta = res['metadata'];
+              print("[AIO ENGINE] ✅ YouTube Video found via Vreden!");
+              return ScrapedMedia(
+                url: res['download']['url'],
+                type: 'video',
+                extension: '.mp4',
+                platform: 'youtube',
+                author: meta?['author']?['name'] ?? 'YouTube User',
+                id: meta?['videoId'] ?? _extractId(url),
+                thumbnailUrl: meta?['thumbnail'],
+                title: meta?['title'],
+              );
+            }
+          }
+        }
+      } catch (e) {
+        print("[AIO ENGINE] YT Vreden Video Error: $e");
+      }
+
+      // Fallback to Nexray Video (120s timeout)
+      try {
+        print("[AIO ENGINE] Vreden Video failed, trying Nexray (120s)...");
+        final nUrl = '$_nexrayBase/downloader/ytmp4?url=$encodedUrl&resolusi=$vQual';
+        final response = await http.get(Uri.parse(nUrl)).timeout(const Duration(seconds: 120));
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          if (data['status'] == true && data['result'] != null) {
+            final res = data['result'];
+            print("[AIO ENGINE] ✅ YouTube Video found via Nexray!");
+            return ScrapedMedia(
+              url: res['url'],
+              type: 'video',
+              extension: '.mp4',
+              platform: 'youtube',
+              author: 'YouTube User',
+              id: _extractId(url),
+              thumbnailUrl: res['thumbnail'],
+              title: res['title'],
+            );
+          }
+        }
+      } catch (e) {
+        print("[AIO ENGINE] YT Nexray Video Error: $e");
+      }
+
+      print("[AIO ENGINE] ❌ YouTube Video: all APIs failed");
+      return null;
+    } catch (e) {
+      print("[AIO ENGINE] YouTube Video Scraper Error: $e");
       return null;
     }
   }
