@@ -12,14 +12,30 @@ class UpdateService {
       'https://api.github.com/repos/$_owner/$_repo/releases/latest';
 
   /// Check GitHub for latest release and show dialog if newer version exists
-  static Future<void> checkForUpdate(BuildContext context) async {
+  static Future<void> checkForUpdate(BuildContext context, {bool showToast = false}) async {
     try {
+      if (showToast) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Memeriksa update...', style: GoogleFonts.inter(fontSize: 12)),
+            backgroundColor: const Color(0xFF1A1A2E),
+            duration: const Duration(seconds: 1),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
+
       final response = await http.get(
         Uri.parse(_apiUrl),
         headers: {'Accept': 'application/vnd.github.v3+json'},
       ).timeout(const Duration(seconds: 10));
 
-      if (response.statusCode != 200) return;
+      if (response.statusCode != 200) {
+        debugPrint('[UpdateService] Update check failed with status: ${response.statusCode}');
+        return;
+      }
 
       final data = json.decode(response.body);
       final latestTag = data['tag_name']?.toString() ?? '';
@@ -27,34 +43,104 @@ class UpdateService {
       final body = data['body']?.toString() ?? '';
       final htmlUrl = data['html_url']?.toString() ?? '';
 
-      // Extract version number (strip 'v' prefix if present)
+      // Extract version number
       String latestVersion = latestTag.replaceFirst(RegExp(r'^v'), '');
       String currentVersion = SettingsService.appVersion;
 
+      debugPrint('[UpdateService] Checking for updates: Current v$currentVersion, Latest v$latestVersion');
+
       if (_isNewer(latestVersion, currentVersion) && context.mounted) {
+        debugPrint('[UpdateService] New version found! Showing dialog.');
         _showUpdateDialog(context, releaseName, latestVersion, body, htmlUrl);
+      } else {
+        debugPrint('[UpdateService] App is up to date.');
+        if (showToast && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Aplikasi sudah versi terbaru (v$currentVersion)', 
+                style: GoogleFonts.inter(fontSize: 12)),
+              backgroundColor: const Color(0xFF1A3E2A),
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        }
       }
     } catch (e) {
       debugPrint('[UpdateService] Check failed: $e');
+      if (showToast && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal memeriksa update. Cek koneksi Anda.', 
+              style: GoogleFonts.inter(fontSize: 12)),
+            backgroundColor: const Color(0xFF3A1A1A),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+      }
     }
   }
 
   /// Compare semantic versions: returns true if remote > current
   static bool _isNewer(String remote, String current) {
     try {
-      final r = remote.split('.').map(int.parse).toList();
-      final c = current.split('.').map(int.parse).toList();
-      
-      // Pad to same length
-      while (r.length < 3) r.add(0);
-      while (c.length < 3) c.add(0);
-      
-      for (int i = 0; i < 3; i++) {
-        if (r[i] > c[i]) return true;
-        if (r[i] < c[i]) return false;
+      // 1. Helper to extract numeric parts: "2.8.0 Beta" -> [2, 8, 0]
+      List<int> getNumbers(String v) {
+        final clean = v.toLowerCase().replaceFirst(RegExp(r'^v'), '');
+        final parts = clean.split('.');
+        return parts.map((p) {
+          final match = RegExp(r'^\d+').firstMatch(p);
+          return match != null ? int.parse(match.group(0)!) : 0;
+        }).toList();
       }
-      return false; // equal
-    } catch (_) {
+
+      // 2. Helper to get release priority (Pre-release ranking)
+      int getPriority(String v) {
+        final low = v.toLowerCase();
+        if (low.contains('rc')) return 3;
+        if (low.contains('beta')) return 2;
+        if (low.contains('alpha')) return 1;
+        // If it contains dots/numbers but no pre-release labels, it's likely stable
+        return 4; 
+      }
+
+      // 3. Helper to get numeric suffix: "Beta 2" -> 2
+      int getSuffixNumber(String v) {
+        final match = RegExp(r'(\d+)$').firstMatch(v.trim());
+        return match != null ? int.parse(match.group(0)!) : 0;
+      }
+
+      final rNums = getNumbers(remote);
+      final cNums = getNumbers(current);
+      
+      // Compare main numeric segments (Major.Minor.Patch)
+      final maxLen = rNums.length > cNums.length ? rNums.length : cNums.length;
+      for (int i = 0; i < maxLen; i++) {
+        final r = i < rNums.length ? rNums[i] : 0;
+        final c = i < cNums.length ? cNums[i] : 0;
+        if (r > c) return true;
+        if (r < c) return false;
+      }
+
+      // If numeric segments are identical, check priorities: Stable > RC > Beta > Alpha
+      final rPri = getPriority(remote);
+      final cPri = getPriority(current);
+      if (rPri > cPri) return true;
+      if (rPri < cPri) return false;
+
+      // If priorities are same (e.g. both are Beta), check for suffix numbers (Beta 2 vs Beta 1)
+      if (rPri == cPri) {
+        final rSuf = getSuffixNumber(remote);
+        final cSuf = getSuffixNumber(current);
+        if (rSuf > cSuf) return true;
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('[UpdateService] Version comparison error: $e');
       return false;
     }
   }

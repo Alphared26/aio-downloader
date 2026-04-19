@@ -15,7 +15,7 @@ class SettingsService extends ChangeNotifier {
 
   static const String defaultDownloadPath = '/storage/emulated/0/Download';
   static const String githubUrl = 'https://github.com/Alphared26/aio-downloader';
-  static const String appVersion = '2.5.0';
+  static const String appVersion = '2.8.0 Beta';
 
   DownloadQuality _quality = DownloadQuality.auto;
   DownloadQuality get quality => _quality;
@@ -23,35 +23,54 @@ class SettingsService extends ChangeNotifier {
   bool _autoDownloadShare = true;
   bool get autoDownloadShare => _autoDownloadShare;
 
+  bool _notificationsEnabled = true;
+  bool get notificationsEnabled => _notificationsEnabled;
+
+  String _downloadPath = defaultDownloadPath;
+  String get downloadPath => _downloadPath;
+
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
+    
+    // Load Quality
     final qStr = prefs.getString(_keyQuality) ?? 'auto';
     _quality = DownloadQuality.values.firstWhere(
       (e) => e.name == qStr, 
       orElse: () => DownloadQuality.auto
     );
+
+    // Load Auto Download
     _autoDownloadShare = prefs.getBool(_keyAutoDownloadShare) ?? true;
+    
+    // Load Notifications
+    _notificationsEnabled = prefs.getBool(_keyNotificationsEnabled) ?? true;
+
+    // Load Download Path
+    _downloadPath = prefs.getString(_keyDownloadPath) ?? defaultDownloadPath;
+
     notifyListeners();
   }
 
   Future<String> getDownloadPath() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyDownloadPath) ?? defaultDownloadPath;
+    return _downloadPath;
   }
 
   Future<void> setDownloadPath(String path) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyDownloadPath, path);
+    _downloadPath = path;
+    notifyListeners();
   }
 
   Future<bool> getNotificationsEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_keyNotificationsEnabled) ?? true;
+    return _notificationsEnabled;
   }
 
   Future<void> setNotificationsEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyNotificationsEnabled, enabled);
+    _notificationsEnabled = enabled;
+    notifyListeners();
   }
 
   Future<bool> getShowWatermark() async {

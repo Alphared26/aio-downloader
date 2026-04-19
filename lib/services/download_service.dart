@@ -175,6 +175,7 @@ class DownloadService extends ChangeNotifier {
     scrapingStatus = 'Mencari media...';
     lastScrapedResults = null;
     selectedMediaIndices = {};
+    _baselineFileSizes.clear(); // Reset file size cache for new scrape
     scrapeQuality = quality; // Initialize per-session quality from settings
     notifyListeners();
 
@@ -307,11 +308,45 @@ class DownloadService extends ChangeNotifier {
   Future<void> _fetchFileSizes(List<ScrapedMedia> results) async {
     final futures = results.where((m) => m.fileSize == null).map((media) async {
       try {
-        final request = http.Request('HEAD', Uri.parse(media.url));
-        request.headers['User-Agent'] = 'Mozilla/5.0';
-        final response = await request.send().timeout(const Duration(seconds: 8));
+        final uri = Uri.parse(media.url);
+        // Try HEAD first
+        final request = http.Request('HEAD', uri);
+        request.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+        if (media.platform == 'threads') {
+          request.headers['Referer'] = 'https://threadsmate.com/';
+        } else {
+          request.headers['Referer'] = 'https://www.google.com/';
+        }
+
+        final response = await request.send().timeout(const Duration(seconds: 10));
+        
         if (response.contentLength != null && response.contentLength! > 0) {
           media.fileSize = response.contentLength;
+          notifyListeners();
+          return;
+        }
+
+        // Fallback: Try GET with Range: 0-1 for stubborn servers (like Threads/FB)
+        final getReq = http.Request('GET', uri);
+        getReq.headers.addAll(request.headers);
+        getReq.headers['Range'] = 'bytes=0-1';
+        
+        final getRes = await getReq.send().timeout(const Duration(seconds: 10));
+        
+        // Check Content-Range: bytes 0-1/TOTAL_SIZE
+        final contentRange = getRes.headers['content-range'];
+        if (contentRange != null) {
+          final total = int.tryParse(contentRange.split('/').last);
+          if (total != null && total > 0) {
+            media.fileSize = total;
+            notifyListeners();
+            return;
+          }
+        }
+        
+        // Fallback to Content-Length if no range but it's small (e.g. error page size, skip)
+        if (getRes.contentLength != null && getRes.contentLength! > 2000) {
+          media.fileSize = getRes.contentLength;
           notifyListeners();
         }
       } catch (_) {}
@@ -319,9 +354,53 @@ class DownloadService extends ChangeNotifier {
     await Future.wait(futures);
   }
 
+  // Store original (720p baseline) file sizes for ratio-based estimation
+  final Map<String, int> _baselineFileSizes = {};
+
   void setScrapeQuality(DownloadQuality q) {
+    final oldQuality = scrapeQuality;
     scrapeQuality = q;
+    
+    // Recalculate estimated file sizes based on quality ratio
+    if (lastScrapedResults != null && oldQuality != q) {
+      _recalculateFileSizes(oldQuality, q);
+    }
+    
     notifyListeners();
+  }
+
+  void _recalculateFileSizes(DownloadQuality oldQ, DownloadQuality newQ) {
+    if (lastScrapedResults == null) return;
+    
+    // Quality multipliers relative to 720p baseline
+    double getMultiplier(DownloadQuality q) {
+      switch (q) {
+        case DownloadQuality.auto:
+          return 1.0; // Auto = 720p equivalent
+        case DownloadQuality.q720:
+          return 1.0;
+        case DownloadQuality.q1080:
+          return 2.25; // 1080p is roughly 2.25x the size of 720p
+      }
+    }
+    
+    final oldMultiplier = getMultiplier(oldQ);
+    final newMultiplier = getMultiplier(newQ);
+    
+    for (final media in lastScrapedResults!) {
+      if (media.type == 'audio' || media.type == 'image') continue; // Only scale video
+      
+      // Store baseline on first quality change
+      final key = media.id.isNotEmpty ? media.id : media.url;
+      if (media.fileSize != null && !_baselineFileSizes.containsKey(key)) {
+        // Calculate baseline (720p equivalent) from current known size
+        _baselineFileSizes[key] = (media.fileSize! / oldMultiplier).round();
+      }
+      
+      if (_baselineFileSizes.containsKey(key)) {
+        media.fileSize = (_baselineFileSizes[key]! * newMultiplier).round();
+      }
+    }
   }
 
   Future<void> downloadSelected() async {
@@ -511,6 +590,7 @@ class DownloadService extends ChangeNotifier {
         timestamp: DateTime.now().millisecondsSinceEpoch,
         fileSize: download.downloadedBytes,
         type: media.type,
+        thumbnailUrl: media.thumbnailUrl,
       ));
 
 
@@ -525,11 +605,14 @@ class DownloadService extends ChangeNotifier {
           : '';
       await NotificationService().showComplete(notifId, fileName, fileSize);
       _emitStatus(DownloadStatusType.success, '✓ Tersimpan: $fileName${fileSize.isNotEmpty ? " · $fileSize" : ""}');
-    } catch (e) {
+    } catch (e, stack) {
+      print("[AIO ENGINE] DOWNLOAD CRITICAL ERROR: $e");
+      print(stack);
+      
       download.isError = true;
       notifyListeners();
       await NotificationService().showError(notifId, fileName);
-      _emitStatus(DownloadStatusType.failure, '✗ Gagal mengunduh: $fileName');
+      _emitStatus(DownloadStatusType.failure, '✗ Gagal mengunduh: $fileName ($e)');
     }
 
     // Auto-remove from active list after 5 seconds

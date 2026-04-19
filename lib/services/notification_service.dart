@@ -39,11 +39,11 @@ class NotificationService {
     _initialized = true;
   }
 
-  Future<bool> _isEnabled() async => await SettingsService().getNotificationsEnabled();
+  bool _isEnabled() => SettingsService().notificationsEnabled;
 
   /// Tampilkan notifikasi progres download (0-100)
   Future<void> showProgress(int id, String fileName, int progress) async {
-    if (!await _isEnabled()) return;
+    if (!_isEnabled()) return;
     await _plugin.show(
       id,
       'Mengunduh...',
@@ -68,7 +68,7 @@ class NotificationService {
 
   /// Notifikasi selesai download
   Future<void> showComplete(int id, String fileName, String fileSize) async {
-    if (!await _isEnabled()) return;
+    if (!_isEnabled()) return;
     await _plugin.show(
       id,
       '✓ Unduhan Selesai',
@@ -88,7 +88,7 @@ class NotificationService {
 
   /// Notifikasi error
   Future<void> showError(int id, String fileName) async {
-    if (!await _isEnabled()) return;
+    if (!_isEnabled()) return;
     await _plugin.show(
       id,
       '✗ Gagal Mengunduh',
