@@ -308,11 +308,45 @@ class DownloadService extends ChangeNotifier {
   Future<void> _fetchFileSizes(List<ScrapedMedia> results) async {
     final futures = results.where((m) => m.fileSize == null).map((media) async {
       try {
-        final request = http.Request('HEAD', Uri.parse(media.url));
-        request.headers['User-Agent'] = 'Mozilla/5.0';
-        final response = await request.send().timeout(const Duration(seconds: 8));
+        final uri = Uri.parse(media.url);
+        // Try HEAD first
+        final request = http.Request('HEAD', uri);
+        request.headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+        if (media.platform == 'threads') {
+          request.headers['Referer'] = 'https://threadsmate.com/';
+        } else {
+          request.headers['Referer'] = 'https://www.google.com/';
+        }
+
+        final response = await request.send().timeout(const Duration(seconds: 10));
+        
         if (response.contentLength != null && response.contentLength! > 0) {
           media.fileSize = response.contentLength;
+          notifyListeners();
+          return;
+        }
+
+        // Fallback: Try GET with Range: 0-1 for stubborn servers (like Threads/FB)
+        final getReq = http.Request('GET', uri);
+        getReq.headers.addAll(request.headers);
+        getReq.headers['Range'] = 'bytes=0-1';
+        
+        final getRes = await getReq.send().timeout(const Duration(seconds: 10));
+        
+        // Check Content-Range: bytes 0-1/TOTAL_SIZE
+        final contentRange = getRes.headers['content-range'];
+        if (contentRange != null) {
+          final total = int.tryParse(contentRange.split('/').last);
+          if (total != null && total > 0) {
+            media.fileSize = total;
+            notifyListeners();
+            return;
+          }
+        }
+        
+        // Fallback to Content-Length if no range but it's small (e.g. error page size, skip)
+        if (getRes.contentLength != null && getRes.contentLength! > 2000) {
+          media.fileSize = getRes.contentLength;
           notifyListeners();
         }
       } catch (_) {}
@@ -556,6 +590,7 @@ class DownloadService extends ChangeNotifier {
         timestamp: DateTime.now().millisecondsSinceEpoch,
         fileSize: download.downloadedBytes,
         type: media.type,
+        thumbnailUrl: media.thumbnailUrl,
       ));
 
 
@@ -570,11 +605,14 @@ class DownloadService extends ChangeNotifier {
           : '';
       await NotificationService().showComplete(notifId, fileName, fileSize);
       _emitStatus(DownloadStatusType.success, '✓ Tersimpan: $fileName${fileSize.isNotEmpty ? " · $fileSize" : ""}');
-    } catch (e) {
+    } catch (e, stack) {
+      print("[AIO ENGINE] DOWNLOAD CRITICAL ERROR: $e");
+      print(stack);
+      
       download.isError = true;
       notifyListeners();
       await NotificationService().showError(notifId, fileName);
-      _emitStatus(DownloadStatusType.failure, '✗ Gagal mengunduh: $fileName');
+      _emitStatus(DownloadStatusType.failure, '✗ Gagal mengunduh: $fileName ($e)');
     }
 
     // Auto-remove from active list after 5 seconds

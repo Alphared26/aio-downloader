@@ -9,6 +9,7 @@ class DownloadRecord {
   final int timestamp;
   final int fileSize; // in bytes
   final String type; // 'video' or 'image'
+  final String? thumbnailUrl;
 
   DownloadRecord({
     required this.fileName,
@@ -17,6 +18,7 @@ class DownloadRecord {
     required this.timestamp,
     required this.fileSize,
     required this.type,
+    this.thumbnailUrl,
   });
 
   Map<String, dynamic> toMap() => {
@@ -26,6 +28,7 @@ class DownloadRecord {
     'timestamp': timestamp,
     'fileSize': fileSize,
     'type': type,
+    'thumbnailUrl': thumbnailUrl,
   };
 
   factory DownloadRecord.fromMap(Map<String, dynamic> map) => DownloadRecord(
@@ -35,6 +38,7 @@ class DownloadRecord {
     timestamp: map['timestamp'] ?? 0,
     fileSize: map['fileSize'] ?? 0,
     type: map['type'] ?? 'video',
+    thumbnailUrl: map['thumbnailUrl'],
   );
 
   String get formattedSize {
@@ -75,12 +79,16 @@ class HistoryService {
   }
 
   Future<void> addRecord(DownloadRecord record) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_key) ?? [];
-    raw.insert(0, jsonEncode(record.toMap()));
-    // Keep max 200 records
-    if (raw.length > 200) raw.removeLast();
-    await prefs.setStringList(_key, raw);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getStringList(_key) ?? [];
+      raw.insert(0, jsonEncode(record.toMap()));
+      // Keep max 100 records (lowered for stability)
+      if (raw.length > 100) raw.removeRange(100, raw.length);
+      await prefs.setStringList(_key, raw);
+    } catch (e) {
+      print("[AIO HISTORY] Error adding record: $e");
+    }
   }
 
   Future<void> deleteRecord(int index) async {

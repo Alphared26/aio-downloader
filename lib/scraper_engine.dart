@@ -361,10 +361,11 @@ class AntiGravityEngine {
               final int index = entry.key;
               final m = entry.value;
               bool isVid = m['type'] == 'video';
+              final thumb = m['thumb'] ?? m['thumbnail'];
               return ScrapedMedia(
                 url: m['url'], type: isVid ? 'video' : 'image', extension: isVid ? '.mp4' : '.jpg',
                 platform: 'instagram', author: username, id: '${_extractId(url)}_${index + 1}',
-                thumbnailUrl: m['thumb'] ?? m['thumbnail'] ?? m['url'] ?? thumbFallback,
+                thumbnailUrl: thumb ?? (isVid ? thumbFallback : m['url']),
               );
             }));
           }
@@ -384,10 +385,11 @@ class AntiGravityEngine {
               final int index = entry.key;
               final m = entry.value;
               bool isVid = m['type'].toString().contains('mp4');
+              final thumb = m['thumbnail'];
               return ScrapedMedia(
                 url: m['url'], type: isVid ? 'video' : 'image', extension: isVid ? '.mp4' : '.jpg',
                 platform: 'instagram', author: username, id: '${shortCode}_${index + 1}',
-                thumbnailUrl: m['thumbnail'] ?? m['url'] ?? thumbFallback,
+                thumbnailUrl: thumb ?? (isVid ? thumbFallback : m['url']),
               );
             }));
           }
@@ -485,14 +487,15 @@ class AntiGravityEngine {
           final data = json.decode(response.body);
           if (data['status'] == true && data['result'] != null) {
             final res = data['result'];
+            final id = _extractId(url);
             results.add(ScrapedMedia(
               url: res['url'],
               type: 'audio',
               extension: '.mp3',
               platform: 'youtube',
               author: 'YouTube User',
-              id: _extractId(url) + "_audio",
-              thumbnailUrl: null,
+              id: id + "_audio",
+              thumbnailUrl: 'https://img.youtube.com/vi/$id/hqdefault.jpg',
               title: res['title'],
             ));
             audioSuccess = true;
@@ -559,14 +562,15 @@ class AntiGravityEngine {
           if (data['status'] == true && data['result'] != null) {
             final res = data['result'];
             print("[AIO ENGINE] ✅ YouTube Video found via Nexray Ytmp4!");
+            final id = _extractId(url);
             return ScrapedMedia(
               url: res['url'],
               type: 'video',
               extension: '.mp4',
               platform: 'youtube',
               author: 'YouTube User',
-              id: _extractId(url),
-              thumbnailUrl: res['thumbnail'],
+              id: id,
+              thumbnailUrl: 'https://img.youtube.com/vi/$id/hqdefault.jpg',
               title: res['title'],
             );
           }

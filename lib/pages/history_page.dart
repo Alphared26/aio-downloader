@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:open_file/open_file.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../services/history_service.dart';
 
@@ -251,10 +254,26 @@ class _HistoryPageState extends State<HistoryPage> {
                 color: _platformColor(r.platform).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                r.type == 'video' ? Icons.videocam_rounded : 
-                r.type == 'audio' ? Icons.audiotrack_rounded : Icons.image_rounded,
-                color: _platformColor(r.platform), size: 20),
+              child: r.thumbnailUrl != null && r.thumbnailUrl!.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: CachedNetworkImage(
+                      imageUrl: r.thumbnailUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Center(
+                        child: Icon(
+                          r.type == 'video' ? Icons.videocam_rounded : Icons.image_rounded,
+                          color: _platformColor(r.platform).withOpacity(0.5), size: 16),
+                      ),
+                      errorWidget: (context, url, error) => Icon(
+                        r.type == 'video' ? Icons.videocam_rounded : Icons.image_rounded,
+                        color: _platformColor(r.platform), size: 20),
+                    ),
+                  )
+                : Icon(
+                    r.type == 'video' ? Icons.videocam_rounded : 
+                    r.type == 'audio' ? Icons.audiotrack_rounded : Icons.image_rounded,
+                    color: _platformColor(r.platform), size: 20),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -287,9 +306,88 @@ class _HistoryPageState extends State<HistoryPage> {
                 ],
               ),
             ),
-            Icon(
-              r.type == 'video' ? Icons.videocam_rounded : Icons.image_rounded,
-              color: Colors.white24, size: 16,
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert_rounded, color: Colors.white38, size: 20),
+              color: const Color(0xFF1A1A2E),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              onSelected: (value) async {
+                switch (value) {
+                  case 'share':
+                    final file = File(r.filePath);
+                    if (await file.exists()) {
+                      try {
+                        // Copy to temp to ensure Android URI permissions work correctly
+                        final tempDir = await getTemporaryDirectory();
+                        final tempFile = File('${tempDir.path}/${r.fileName}');
+                        await file.copy(tempFile.path);
+                        
+                        await Share.shareXFiles([XFile(tempFile.path)], text: r.fileName);
+                      } catch (e) {
+                        debugPrint("[AIO DEBUG] Share Error: $e");
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Gagal menyiapkan file untuk dibagikan')),
+                          );
+                        }
+                      }
+                    } else {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('File tidak ditemukan')),
+                        );
+                      }
+                    }
+                    break;
+                  case 'open':
+                    final file = File(r.filePath);
+                    if (await file.exists()) {
+                      await OpenFile.open(r.filePath);
+                    } else {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('File tidak ditemukan')),
+                        );
+                      }
+                    }
+                    break;
+                  case 'delete':
+                    _deleteRecord(index);
+                    break;
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'share',
+                  child: Row(
+                    children: [
+                      Icon(Icons.share_rounded, size: 18, color: Colors.blueAccent),
+                      SizedBox(width: 12),
+                      Text('Bagikan', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'open',
+                  child: Row(
+                    children: [
+                      Icon(Icons.open_in_new_rounded, size: 18, color: Colors.greenAccent),
+                      SizedBox(width: 12),
+                      Text('Buka di...', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(height: 1),
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline_rounded, size: 18, color: Colors.redAccent),
+                      SizedBox(width: 12),
+                      Text('Hapus', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ],
         ),

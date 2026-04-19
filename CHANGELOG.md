@@ -1,19 +1,20 @@
 # Changelog v2.8.0
 
 ## What's New
-*   **WhatsApp Status Saver**: Tab baru khusus untuk menyimpan status WhatsApp (Foto & Video) langsung ke galeri. 🟢
-*   **SAF Backup Solution**: Menambahkan opsi "Pilih Folder Manual" menggunakan Storage Access Framework (SAF) jika izin direct storage ditolak. 📂
-*   **Native Video Thumbnails**: Preview video status WhatsApp kini tampil instan menggunakan native `MediaMetadataRetriever` via Android Method Channel. 🎬
-*   **4-Tab Navigation**: Navigasi bawah diperbarui menjadi 4 bagian: Unduhan, Status Saver, Riwayat, dan Setelan. 🧭
+*   **Threads Downloader Support**: Full media download support for Threads (threads.com/net) using a 3-tier failover engine (Threadsmate, Vreden, Nexray). 🧵
+*   **Media Thumbnails in History**: Download history now features rich media previews (thumbnails) instead of generic icons for a better visual experience. 📸
+*   **History Action Menu**: Added a three-dot menu for each history item with options to **Share** (Bagikan), **Open In** (Buka di...), and **Delete**. 🔘
+*   **WhatsApp Status Saver**: New dedicated tab for saving WhatsApp statuses (Photos & Videos) directly to your gallery. 🟢
+*   **SAF Backup Solution**: Added "Manual Folder Selection" via Storage Access Framework (SAF) if direct storage permissions are denied. 📂
 
 ## Improvements & UX
-*   **Reactive Settings**: Me-refactor sistem pengaturan menjadi reaktif; perubahan toggle (Unduh Otomatis & Notifikasi) kini berubah secara instan. ⚡
-*   **Notification Permission Gate**: Toggle "Notifikasi Progres" kini mengecek izin sistem terlebih dahulu sebelum diaktifkan untuk menghindari error. 🔔
-*   **Twitter/X Detection**: Deteksi URL `twitter.com` dan `x.com` dioptimalkan agar lebih cepat dan akurat. 🐦
-*   **Dynamic Size Estimation**: Estimasi ukuran file kini berubah secara cerdas saat Anda mengganti resolusi (720p/1080p). ⚡
-*   **UI Cleanup (Home)**: Tampilan header HomePage lebih bersih dengan menghapus daftar teks platform statis. ✨
-*   **Expanded Platform List**: "X" dan "WhatsApp" kini resmi terdaftar di daftar Platform yang Didukung pada halaman Setelan. 🛠️
-*   **Under-the-Hood Fixes**: Menghapus library SAF pihak ketiga yang tidak stabil dan menggantinya dengan akses file langsung serta native method channels untuk performa lebih handal. 🧱
+*   **Robust File Sharing**: Implemented temporary file buffering to ensure "Share" functionality works seamlessly across all Android apps. 🚀
+*   **Intelligent Size Estimation**: Enhanced `Content-Length` fetching with custom headers and Range-request fallback for strict servers (Threads/FB). ⚡
+*   **History Stabilization**: Limited history to 100 items and added deep safety-checks for SharedPreferences to prevent app crashes. 🧱
+*   **Native Video Thumbnails**: WhatsApp Status previews are now instant using native `MediaMetadataRetriever` via Android Method Channel. 🎬
+*   **4-Tab Navigation**: Updated bottom navigation: Downloads, Status Saver, History, and Settings. 🧭
+*   **Reactive Settings**: Refactored settings to be fully reactive; toggles for Auto-Download and Notifications now update instantly. ⚡
+*   **UI Cleanup**: Modernized history layout and cleaned up HomePage header for a more premium look. ✨
 
 ---
 
