@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/settings_service.dart';
 import '../services/download_service.dart';
+import '../services/update_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -21,56 +23,63 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsService>();
     
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(
-        valueColor: AlwaysStoppedAnimation(Color(0xFF4D8EFF))));
-    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // === Download Section ===
+        _buildSectionLabel('UNDUHAN'),
+        _buildCard([
+          _buildPathTile(context, settings, settings.downloadPath),
+          const Divider(height: 1, color: Color(0xFF2A2A3E), indent: 16),
+          _buildQualityTile(context, settings),
+          const Divider(height: 1, color: Color(0xFF2A2A3E), indent: 16),
+          _buildSwitchTile(
+            icon: Icons.auto_awesome_rounded,
+            iconColor: Colors.cyanAccent,
+            title: 'Unduh Otomatis',
+            subtitle: 'Langsung unduh saat link dibagikan',
+            value: settings.autoDownloadShare,
+            onChanged: (v) => settings.setAutoDownloadShare(v),
+          ),
+        ]),
 
-    return FutureBuilder(
-      future: Future.wait([
-        settings.getDownloadPath(),
-        settings.getNotificationsEnabled(),
-      ]),
-      builder: (context, snapshot) {
-        final path = snapshot.data?[0] as String? ?? SettingsService.defaultDownloadPath;
-        final notif = snapshot.data?[1] as bool? ?? true;
+        const SizedBox(height: 16),
 
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // === Download Section ===
-            _buildSectionLabel('UNDUHAN'),
-            _buildCard([
-              _buildPathTile(context, settings, path),
-              const Divider(height: 1, color: Color(0xFF2A2A3E), indent: 16),
-              _buildQualityTile(context, settings),
-              const Divider(height: 1, color: Color(0xFF2A2A3E), indent: 16),
-              _buildSwitchTile(
-                icon: Icons.auto_awesome_rounded,
-                iconColor: Colors.cyanAccent,
-                title: 'Unduh Otomatis',
-                subtitle: 'Langsung unduh saat link dibagikan',
-                value: settings.autoDownloadShare,
-                onChanged: (v) => settings.setAutoDownloadShare(v),
-              ),
-            ]),
+        // === Notifications Section ===
+        _buildSectionLabel('NOTIFIKASI'),
+        _buildCard([
+          _buildSwitchTile(
+            icon: Icons.notifications_rounded,
+            iconColor: const Color(0xFFFFA726),
+            title: 'Notifikasi Progres',
+            subtitle: 'Tampilkan notifikasi saat mengunduh',
+            value: settings.notificationsEnabled,
+            onChanged: (v) async {
+              if (v) {
+                // Request permission when enabling
+                final status = await Permission.notification.request();
+                if (!status.isGranted) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Izin notifikasi ditolak. Aktifkan di Pengaturan Sistem.', 
+                          style: GoogleFonts.inter(fontSize: 12)),
+                        backgroundColor: const Color(0xFF3A1A1A),
+                        behavior: SnackBarBehavior.floating,
+                        margin: const EdgeInsets.all(12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    );
+                  }
+                  return; // Don't enable
+                }
+              }
+              settings.setNotificationsEnabled(v);
+            },
+          ),
+        ]),
 
-            const SizedBox(height: 16),
-
-            // === Notifications Section ===
-            _buildSectionLabel('NOTIFIKASI'),
-            _buildCard([
-              _buildSwitchTile(
-                icon: Icons.notifications_rounded,
-                iconColor: const Color(0xFFFFA726),
-                title: 'Notifikasi Progres',
-                subtitle: 'Tampilkan notifikasi saat mengunduh',
-                value: notif,
-                onChanged: (v) => settings.setNotificationsEnabled(v),
-              ),
-            ]),
-
-            const SizedBox(height: 16),
+        const SizedBox(height: 16),
 
             // === About / Watermark Section ===
             _buildSectionLabel('TENTANG'),
@@ -109,6 +118,24 @@ class _SettingsPageState extends State<SettingsPage> {
                 subtitle: Text('AIO Downloader v${SettingsService.appVersion}',
                   style: GoogleFonts.inter(fontSize: 12, color: Colors.white38)),
               ),
+              const Divider(height: 1, color: Color(0xFF2A2A3E), indent: 16),
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                leading: Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.orangeAccent.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.update_rounded, color: Colors.orangeAccent, size: 18),
+                ),
+                title: Text('Periksa Update',
+                  style: GoogleFonts.inter(fontSize: 14, color: Colors.white, fontWeight: FontWeight.w600)),
+                subtitle: Text('Cek rilis terbaru di GitHub',
+                  style: GoogleFonts.inter(fontSize: 11, color: Colors.white38)),
+                trailing: const Icon(Icons.chevron_right_rounded, size: 20, color: Colors.white24),
+                onTap: () => UpdateService.checkForUpdate(context, showToast: true),
+              ),
             ]),
 
             const SizedBox(height: 24),
@@ -117,24 +144,24 @@ class _SettingsPageState extends State<SettingsPage> {
             Text('Platform yang didukung',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(fontSize: 11, color: Colors.white24)),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
               children: [
                 _buildPlatformChip('Instagram', const Color(0xFFE1306C)),
-                const SizedBox(width: 8),
                 _buildPlatformChip('TikTok', const Color(0xFF69C9D0)),
-                const SizedBox(width: 8),
                 _buildPlatformChip('Facebook', const Color(0xFF1877F2)),
-                const SizedBox(width: 8),
                 _buildPlatformChip('YouTube', const Color(0xFFFF4444)),
+                _buildPlatformChip('X', Colors.white),
+                _buildPlatformChip('WhatsApp', const Color(0xFF25D366)),
+                _buildPlatformChip('Threads', const Color(0xFF9B6DFF)),
               ],
             ),
             const SizedBox(height: 32),
           ],
         );
-      },
-    );
   }
 
   Widget _buildSectionLabel(String label) {

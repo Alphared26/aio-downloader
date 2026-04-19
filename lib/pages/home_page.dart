@@ -565,12 +565,11 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  isBusy
-                      ? '${svc.activeDownloads.where((d) => !d.isComplete).length} file berjalan'
-                      : 'IG · TikTok · Facebook · YouTube',
-                  style: GoogleFonts.inter(fontSize: 11, color: Colors.white38),
-                ),
+                if (isBusy)
+                  Text(
+                    '${svc.activeDownloads.where((d) => !d.isComplete).length} file berjalan',
+                    style: GoogleFonts.inter(fontSize: 11, color: Colors.white38),
+                  ),
               ],
             ),
           ),
@@ -784,18 +783,12 @@ class _HomePageState extends State<HomePage> {
             child: const Icon(Icons.share_rounded, size: 40, color: Color(0xFF4D8EFF)),
           ),
           const SizedBox(height: 16),
-          Text('Tempel Link atau Bagikan dari App Lain',
+          Text('Tempel Link atau Bagikan dari Sosmed Lain',
             textAlign: TextAlign.center,
             style: GoogleFonts.inter(
               fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white,
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Instagram · TikTok · Facebook · YouTube',
-            textAlign: TextAlign.center,
-            style: GoogleFonts.inter(fontSize: 12, color: Colors.white30),
-          ),
+          )
         ],
       ),
     );

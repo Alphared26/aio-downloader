@@ -175,6 +175,7 @@ class DownloadService extends ChangeNotifier {
     scrapingStatus = 'Mencari media...';
     lastScrapedResults = null;
     selectedMediaIndices = {};
+    _baselineFileSizes.clear(); // Reset file size cache for new scrape
     scrapeQuality = quality; // Initialize per-session quality from settings
     notifyListeners();
 
@@ -319,9 +320,53 @@ class DownloadService extends ChangeNotifier {
     await Future.wait(futures);
   }
 
+  // Store original (720p baseline) file sizes for ratio-based estimation
+  final Map<String, int> _baselineFileSizes = {};
+
   void setScrapeQuality(DownloadQuality q) {
+    final oldQuality = scrapeQuality;
     scrapeQuality = q;
+    
+    // Recalculate estimated file sizes based on quality ratio
+    if (lastScrapedResults != null && oldQuality != q) {
+      _recalculateFileSizes(oldQuality, q);
+    }
+    
     notifyListeners();
+  }
+
+  void _recalculateFileSizes(DownloadQuality oldQ, DownloadQuality newQ) {
+    if (lastScrapedResults == null) return;
+    
+    // Quality multipliers relative to 720p baseline
+    double getMultiplier(DownloadQuality q) {
+      switch (q) {
+        case DownloadQuality.auto:
+          return 1.0; // Auto = 720p equivalent
+        case DownloadQuality.q720:
+          return 1.0;
+        case DownloadQuality.q1080:
+          return 2.25; // 1080p is roughly 2.25x the size of 720p
+      }
+    }
+    
+    final oldMultiplier = getMultiplier(oldQ);
+    final newMultiplier = getMultiplier(newQ);
+    
+    for (final media in lastScrapedResults!) {
+      if (media.type == 'audio' || media.type == 'image') continue; // Only scale video
+      
+      // Store baseline on first quality change
+      final key = media.id.isNotEmpty ? media.id : media.url;
+      if (media.fileSize != null && !_baselineFileSizes.containsKey(key)) {
+        // Calculate baseline (720p equivalent) from current known size
+        _baselineFileSizes[key] = (media.fileSize! / oldMultiplier).round();
+      }
+      
+      if (_baselineFileSizes.containsKey(key)) {
+        media.fileSize = (_baselineFileSizes[key]! * newMultiplier).round();
+      }
+    }
   }
 
   Future<void> downloadSelected() async {

@@ -11,8 +11,10 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'services/download_service.dart';
 import 'services/notification_service.dart';
 import 'services/settings_service.dart';
+import 'services/status_service.dart';
 import 'services/update_service.dart';
 import 'pages/home_page.dart';
+import 'pages/status_saver_page.dart';
 import 'pages/history_page.dart';
 import 'pages/settings_page.dart';
 
@@ -46,6 +48,7 @@ void main() async {
       providers: [
         ChangeNotifierProvider(create: (_) => DownloadService()),
         ChangeNotifierProvider(create: (_) => SettingsService()),
+        ChangeNotifierProvider(create: (_) => StatusService()),
       ],
       child: const AIODownloaderApp(),
     ),
@@ -238,7 +241,9 @@ class _MainShellState extends State<MainShell> {
               border: Border.all(color: const Color(0xFF4D8EFF).withOpacity(0.3)),
             ),
             child: Text(
-              _selectedTab == 0 ? 'Unduhan' : _selectedTab == 1 ? 'Riwayat' : 'Setelan',
+              _selectedTab == 0 ? 'Unduhan' : 
+              _selectedTab == 1 ? 'Status' :
+              _selectedTab == 2 ? 'Riwayat' : 'Setelan',
               style: GoogleFonts.inter(
                 fontSize: 11, fontWeight: FontWeight.w600,
                 color: const Color(0xFF4D8EFF),
@@ -253,8 +258,9 @@ class _MainShellState extends State<MainShell> {
   Widget _buildPage() {
     switch (_selectedTab) {
       case 0: return const HomePage();
-      case 1: return const HistoryPage();
-      case 2: return const SettingsPage();
+      case 1: return const StatusSaverPage();
+      case 2: return const HistoryPage();
+      case 3: return const SettingsPage();
       default: return const HomePage();
     }
   }
@@ -272,8 +278,9 @@ class _MainShellState extends State<MainShell> {
           child: Row(
             children: [
               _navItem(0, Icons.download_rounded, Icons.download_rounded, 'Unduhan'),
-              _navItem(1, Icons.history_rounded, Icons.history_rounded, 'Riwayat'),
-              _navItem(2, Icons.settings_rounded, Icons.settings_rounded, 'Setelan'),
+              _navItem(1, Icons.chat_rounded, Icons.chat_rounded, 'Status Saver'),
+              _navItem(2, Icons.history_rounded, Icons.history_rounded, 'Riwayat'),
+              _navItem(3, Icons.settings_rounded, Icons.settings_rounded, 'Setelan'),
             ],
           ),
         ),
